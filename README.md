@@ -1,118 +1,118 @@
-# Hager flow für Home Assistant
+# Hager flow for Home Assistant
 
-Home-Assistant-Integration für den **Hager flow** Batteriespeicher mit PV-Anlage
-(intern E3/DC-Hardware). Liefert Live-Leistungen, Batterie-Ladestand und kumulierte
-Energiezähler — letztere direkt nutzbar im Energie-Dashboard.
+Home Assistant integration for the **Hager flow** battery storage system with PV
+(E3/DC hardware underneath). Provides live power readings, battery state of charge
+and cumulative energy counters — the latter ready to use in the energy dashboard.
 
-> **Inoffiziell.** Diese Integration nutzt die undokumentierte API hinter dem
-> flow-Portal. Hager bietet unter [developer.hagerenergy.com](https://developer.hagerenergy.com/)
-> inzwischen eine offizielle API an — siehe [Ausblick](#ausblick-offizielle-api).
+> **Unofficial.** This integration uses the undocumented API behind the flow portal.
+> Hager now offers an official one at [developer.hagerenergy.com](https://developer.hagerenergy.com/)
+> — see [Looking ahead](#looking-ahead-the-official-api).
 
-## Entitäten
+## Entities
 
-| Entität | Einheit | Bemerkung |
+| Entity | Unit | Notes |
 |---|---|---|
-| Batterie-Ladestand | % | |
-| PV-Leistung | W | Summe aller Strings |
-| Hausverbrauch | W | |
-| Batterieleistung | W | positiv = laden, negativ = entladen |
-| Netzleistung | W | positiv = Bezug, negativ = Einspeisung |
-| Wechselrichterleistung | W | standardmäßig deaktiviert |
-| PV-Energie | kWh | kumuliert, `total_increasing` |
-| Hausverbrauch Energie | kWh | kumuliert |
-| Netzbezug / Einspeisung Energie | kWh | kumuliert |
-| Batterie Lade-/Entladeenergie | kWh | kumuliert |
-| Online | — | Verbindung zum Portal |
+| Battery level | % | |
+| Solar power | W | sum of all strings |
+| House consumption | W | |
+| Battery power | W | positive = charging, negative = discharging |
+| Grid power | W | positive = import, negative = export |
+| Inverter power | W | disabled by default |
+| Solar energy | kWh | cumulative, `total_increasing` |
+| House energy | kWh | cumulative |
+| Grid import / export energy | kWh | cumulative |
+| Battery charge / discharge energy | kWh | cumulative |
+| Online | — | connection to the portal |
 
-Zusätzlich gibt es vorzeichenlose Leistungsvarianten (Ladeleistung, Entladeleistung,
-Netzbezug, Einspeisung), die standardmäßig deaktiviert sind — praktisch für
-Automationen ohne Template.
+There are also unsigned power variants (charge power, discharge power, grid import,
+grid export), disabled by default — handy for automations without templates.
 
-Die Energiezähler eignen sich unmittelbar für das Energie-Dashboard:
+The energy counters can be used directly in the energy dashboard:
 
-- **Netz** → Netzbezug Energie / Einspeisung Energie
-- **Solar** → PV-Energie
-- **Batterie** → Batterie Ladeenergie / Batterie Entladeenergie
+- **Grid** → Grid import energy / Grid export energy
+- **Solar** → Solar energy
+- **Battery** → Battery charge energy / Battery discharge energy
 
 ## Installation
 
 ### HACS
 
-1. HACS → ⋮ → *Benutzerdefinierte Repositories*
-2. `https://github.com/treee111/hagerFlow` hinzufügen, Kategorie *Integration*
-3. „Hager flow" installieren, Home Assistant neu starten
+1. HACS → ⋮ → *Custom repositories*
+2. Add `https://github.com/treee111/hagerFlow`, category *Integration*
+3. Install "Hager flow", then restart Home Assistant
 
-### Manuell
+### Manual
 
-`custom_components/hager_flow/` nach `<config>/custom_components/` kopieren und
-Home Assistant neu starten.
+Copy `custom_components/hager_flow/` into `<config>/custom_components/` and restart
+Home Assistant.
 
-## Einrichtung
+## Setup
 
-*Einstellungen → Geräte & Dienste → Integration hinzufügen → Hager flow*
+*Settings → Devices & Services → Add Integration → Hager flow*
 
-Zwei Angaben werden gebraucht:
+Two values are needed:
 
-**Seriennummer** — steht in der Titelzeile des Portals und in dessen URL,
-eine zwölfstellige Zahl.
+**Serial number** — shown in the portal title bar and in its URL, a twelve-digit
+number.
 
-**Refresh-Token** — so kommst du dran:
+**Refresh token** — how to get it:
 
-1. [flow.hager.com](https://flow.hager.com) öffnen und anmelden
-2. Entwicklertools öffnen (F12)
+1. Open [flow.hager.com](https://flow.hager.com) and sign in
+2. Open the developer tools (F12)
 3. *Application* → *Local Storage* → `flow.hager.com`
-4. Wert von `reAuthToken` kopieren (ohne die äußeren Anführungszeichen)
+4. Copy the value of `reAuthToken` (without the surrounding quotes)
 
-Das Token ist etwa **30 Tage** gültig. Läuft es ab, meldet Home Assistant das als
-Reparatur und fragt über den normalen Reauth-Dialog nach einem neuen — die
-Integration muss nicht neu eingerichtet werden.
+The token is valid for roughly **30 days**. When it expires, Home Assistant reports a
+repair issue and asks for a new one through the regular reauth dialog — there is no
+need to set the integration up again.
 
-## Funktionsweise
+## How it works
 
-Das flow-Portal ist ein Frontend vor der E3/DC-Cloud. Die Integration meldet sich
-mit dem langlebigen Refresh-Token an, holt daraus ein kurzlebiges Access-Token
-(10 Minuten) und erneuert es selbstständig:
+The flow portal is a frontend for the E3/DC cloud. The integration signs in with the
+long-lived refresh token, derives a short-lived access token (10 minutes) from it and
+renews that on its own:
 
 ```
 POST /auth-saml/re-auth   {"reAuthToken": "..."}  ->  {"token": "..."}
 GET  /storages/{SN}/status                            Authorization: Bearer <token>
-GET  /storages/{SN}/history-values/difference         kumulierte Zähler in Wh
+GET  /storages/{SN}/history-values/difference         cumulative counters in Wh
 ```
 
-Live-Werte werden alle 30 s abgefragt, die Energiezähler alle 5 Minuten — sie
-bewegen sich ohnehin nur im 15-Minuten-Raster und hinken der Echtzeit um bis zu
-etwa 17 Minuten hinterher. Für das Energie-Dashboard ist das unerheblich.
+Live values are polled every 30 s and the energy counters every 5 minutes — the
+latter only advance on a 15-minute grid anyway and lag real time by up to about
+17 minutes. That is irrelevant for the energy dashboard.
 
-Batterie, Netz und Verbrauch werden je Phase gemeldet, PV je String; die
-Integration summiert jeweils. Geprüft über die Energiebilanz, die exakt aufgeht:
-PV plus Batterieentladung plus Netzbezug, abzüglich Ladung und Einspeisung,
-ergibt exakt den Hausverbrauch.
+Battery, grid and consumption are reported per phase and PV per string; the
+integration sums each group. Verified against the energy balance, which adds up
+exactly: solar plus battery discharge plus grid import, minus charging and export,
+equals house consumption.
 
-## Bekannte Grenzen
+## Known limitations
 
-- **Cloud-abhängig.** Ohne Internet oder bei Portal-Störung keine Daten. Lokal ist
-  am Gerät weder ein RSCP-Schlüssel setzbar (kein Konfigurations-Webinterface) noch
-  Modbus TCP freigeschaltet; beides kann der Hager-Support aktivieren.
-- **Refresh-Token läuft nach ~30 Tagen ab** und lässt sich nicht automatisch
-  erneuern, da der Refresh-Endpunkt kein neues zurückgibt.
-- **Vorzeichen nicht endgültig verifiziert.** Die Referenzmessung entstand nachts
-  bei 0 W PV und ~0 W Netz. Ob positiv bei der Netzleistung wirklich Bezug bedeutet,
-  sollte einmal tagsüber bei Einspeisung gegen das Portal geprüft werden.
-- **Nur lesend.** Keine Steuerung der Anlage.
-- Undokumentierte API, die sich jederzeit ändern kann.
+- **Cloud dependent.** No data without internet access or during a portal outage.
+  Locally the device offers neither a settable RSCP key (there is no configuration
+  web interface) nor Modbus TCP; Hager support can enable either one.
+- **The refresh token expires after ~30 days** and cannot be renewed automatically,
+  because the refresh endpoint does not return a new one.
+- **Signs not fully verified.** The reference reading was taken at night with 0 W
+  solar and roughly 0 W grid. Whether a positive grid power really means import
+  should be checked once during the day while exporting.
+- **Read only.** No control over the installation.
+- Undocumented API that may change at any time.
 
-## Ausblick: offizielle API
+## Looking ahead: the official API
 
-Hager betreibt unter [developer.hagerenergy.com](https://developer.hagerenergy.com/)
-eine offizielle, dokumentierte API (REST, OAuth 2, OpenAPI) mit Endpunkten für
-Energieflüsse, Installationen und E-Mobilität. Laut Doku ist sie *„available to all
-customers of E3/DC and Hager Flow"*; ein Self-Service-Zugang im Portal ist
-angekündigt, aktuell gibt es nur Preview-Zugang auf Anfrage bei **api-team@e3dc.com**.
+Hager runs an official, documented API at
+[developer.hagerenergy.com](https://developer.hagerenergy.com/) (REST, OAuth 2,
+OpenAPI) with endpoints for energy flows, installations and e-mobility. According to
+the documentation it is *"available to all customers of E3/DC and Hager Flow"*;
+self-service access through the portal is announced, and for now there is preview
+access on request at **api-team@e3dc.com**.
 
-Sobald Zugang besteht, ist sie diesem Weg vorzuziehen: dokumentiert, stabil,
-mit echtem OAuth-Refresh-Token statt 30-Tage-Ablauf. Der Backend-Zugriff ist
-deshalb in `api.py` gekapselt, sodass eine zweite Implementierung danebengestellt
-werden kann, ohne Koordinator oder Entitäten anzufassen.
+Once access is granted it should be preferred over this route: documented, stable,
+and with a proper OAuth refresh token instead of a 30-day expiry. That is why backend
+access is isolated in `api.py`, so a second implementation can be added alongside it
+without touching the coordinator or the entities.
 
 ## Tests
 
@@ -120,8 +120,8 @@ werden kann, ohne Koordinator oder Entitäten anzufassen.
 python3 tests/test_parse.py
 ```
 
-Läuft ohne Zugangsdaten und ohne installiertes Home Assistant.
+Runs without credentials and without Home Assistant installed.
 
-## Lizenz
+## License
 
 MIT
