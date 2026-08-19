@@ -1,0 +1,12 @@
+{
+  "domain": "hager_flow",
+  "name": "Hager flow",
+  "codeowners": ["@treee111"],
+  "config_flow": true,
+  "documentation": "https://github.com/treee111/hagerFlow",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/treee111/hagerFlow/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

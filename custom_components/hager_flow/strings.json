@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Hager flow",
+        "description": "Sign in at https://flow.hager.com, then open the browser developer tools (F12) and copy the value of `reAuthToken` from Application → Local Storage.\n\nThe serial number is shown in the portal title bar and in its URL.",
+        "data": {
+          "serial": "Serial number",
+          "reauth_token": "Refresh token (reAuthToken)"
+        },
+        "data_description": {
+          "serial": "The 12-digit number shown in the portal",
+          "reauth_token": "Valid for about 30 days. Home Assistant will ask for a new one when it expires."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Hager flow",
+        "description": "The refresh token for installation {serial} has expired. Sign in at https://flow.hager.com again and copy the current `reAuthToken` from Application → Local Storage.",
+        "data": {
+          "reauth_token": "Refresh token (reAuthToken)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Hager flow portal.",
+      "invalid_auth": "The refresh token was rejected. Please copy a current one from the portal.",
+      "unknown_serial": "No installation found with this serial number.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This installation is already set up.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "soc": { "name": "Battery level" },
+      "pv_power": { "name": "Solar power" },
+      "house_power": { "name": "House consumption" },
+      "battery_power": { "name": "Battery power" },
+      "grid_power": { "name": "Grid power" },
+      "inverter_power": { "name": "Inverter power" },
+      "battery_charge_power": { "name": "Battery charge power" },
+      "battery_discharge_power": { "name": "Battery discharge power" },
+      "grid_import_power": { "name": "Grid import power" },
+      "grid_export_power": { "name": "Grid export power" },
+      "pv_energy": { "name": "Solar energy" },
+      "house_energy": { "name": "House energy" },
+      "grid_import_energy": { "name": "Grid import energy" },
+      "grid_export_energy": { "name": "Grid export energy" },
+      "battery_charge_energy": { "name": "Battery charge energy" },
+      "battery_discharge_energy": { "name": "Battery discharge energy" }
+    },
+    "binary_sensor": {
+      "online": { "name": "Online" }
+    }
+  }
+}
