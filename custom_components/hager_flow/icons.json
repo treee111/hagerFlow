@@ -1,0 +1,21 @@
+{
+  "entity": {
+    "sensor": {
+      "pv_power": { "default": "mdi:solar-power" },
+      "pv_energy": { "default": "mdi:solar-power" },
+      "house_power": { "default": "mdi:home-lightning-bolt" },
+      "house_energy": { "default": "mdi:home-lightning-bolt" },
+      "battery_power": { "default": "mdi:battery-charging" },
+      "battery_charge_power": { "default": "mdi:battery-plus" },
+      "battery_discharge_power": { "default": "mdi:battery-minus" },
+      "battery_charge_energy": { "default": "mdi:battery-plus" },
+      "battery_discharge_energy": { "default": "mdi:battery-minus" },
+      "grid_power": { "default": "mdi:transmission-tower" },
+      "grid_import_power": { "default": "mdi:transmission-tower-export" },
+      "grid_export_power": { "default": "mdi:transmission-tower-import" },
+      "grid_import_energy": { "default": "mdi:transmission-tower-export" },
+      "grid_export_energy": { "default": "mdi:transmission-tower-import" },
+      "inverter_power": { "default": "mdi:flash" }
+    }
+  }
+}

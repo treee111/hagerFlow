@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hager flow verbinden",
+        "description": "Auf https://flow.hager.com anmelden, dann die Entwicklertools (F12) öffnen und unter Application → Local Storage den Wert von `reAuthToken` kopieren.\n\nDie Seriennummer steht in der Titelzeile des Portals und in dessen URL.",
+        "data": {
+          "serial": "Seriennummer",
+          "reauth_token": "Refresh-Token (reAuthToken)"
+        },
+        "data_description": {
+          "serial": "Die zwölfstellige Zahl aus dem Portal",
+          "reauth_token": "Etwa 30 Tage gültig. Home Assistant fragt nach Ablauf automatisch nach einem neuen."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Hager flow neu anmelden",
+        "description": "Das Refresh-Token für Anlage {serial} ist abgelaufen. Bitte erneut auf https://flow.hager.com anmelden und den aktuellen `reAuthToken` unter Application → Local Storage kopieren.",
+        "data": {
+          "reauth_token": "Refresh-Token (reAuthToken)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Hager-flow-Portal fehlgeschlagen.",
+      "invalid_auth": "Das Refresh-Token wurde abgelehnt. Bitte ein aktuelles aus dem Portal kopieren.",
+      "unknown_serial": "Keine Anlage mit dieser Seriennummer gefunden.",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Diese Anlage ist bereits eingerichtet.",
+      "reauth_successful": "Die erneute Anmeldung war erfolgreich."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "soc": { "name": "Batterie-Ladestand" },
+      "pv_power": { "name": "PV-Leistung" },
+      "house_power": { "name": "Hausverbrauch" },
+      "battery_power": { "name": "Batterieleistung" },
+      "grid_power": { "name": "Netzleistung" },
+      "inverter_power": { "name": "Wechselrichterleistung" },
+      "battery_charge_power": { "name": "Batterie Ladeleistung" },
+      "battery_discharge_power": { "name": "Batterie Entladeleistung" },
+      "grid_import_power": { "name": "Netzbezug Leistung" },
+      "grid_export_power": { "name": "Einspeisung Leistung" },
+      "pv_energy": { "name": "PV-Energie" },
+      "house_energy": { "name": "Hausverbrauch Energie" },
+      "grid_import_energy": { "name": "Netzbezug Energie" },
+      "grid_export_energy": { "name": "Einspeisung Energie" },
+      "battery_charge_energy": { "name": "Batterie Ladeenergie" },
+      "battery_discharge_energy": { "name": "Batterie Entladeenergie" }
+    },
+    "binary_sensor": {
+      "online": { "name": "Online" }
+    }
+  }
+}
