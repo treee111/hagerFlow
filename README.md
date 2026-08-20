@@ -83,9 +83,13 @@ latter only advance on a 15-minute grid anyway and lag real time by up to about
 17 minutes. That is irrelevant for the energy dashboard.
 
 Battery, grid and consumption are reported per phase and PV per string; the
-integration sums each group. Verified against the energy balance, which adds up
-exactly: solar plus battery discharge plus grid import, minus charging and export,
-equals house consumption.
+integration sums each group.
+
+The sign convention was verified against live readings in both directions — once
+while importing and charging, once while exporting — and the power balance adds up
+to the watt in both cases: solar plus battery discharge plus grid import equals house
+consumption plus battery charging plus grid export. Inverting either sign throws the
+balance off by hundreds of watts, so the mapping is unambiguous.
 
 ## Known limitations
 
@@ -94,9 +98,18 @@ equals house consumption.
   web interface) nor Modbus TCP; Hager support can enable either one.
 - **The refresh token expires after ~30 days** and cannot be renewed automatically,
   because the refresh endpoint does not return a new one.
-- **Signs not fully verified.** The reference reading was taken at night with 0 W
-  solar and roughly 0 W grid. Whether a positive grid power really means import
-  should be checked once during the day while exporting.
+- **The energy counters are the values the installation reports, and their totals do
+  not necessarily balance.** They are monotonic and stable, and reading them is
+  independent of the query window, so they work as `total_increasing` sources. But on
+  a system with a PV surplus diverter or similar controlled loads, the sum of house
+  consumption, export and battery charging can fall noticeably short of solar plus
+  import — such loads are not necessarily included in the consumption counter, and
+  battery conversion losses add to the gap. Compare the daily figures against the
+  portal before relying on them for billing.
+- **Do not derive counters from the `from` field** of `history-values/difference`.
+  Its snapshots are unreliable — solar production appears to rise overnight. Only the
+  `to` field is used, which is the current reading; Home Assistant computes the
+  differences itself.
 - **Read only.** No control over the installation.
 - Undocumented API that may change at any time.
 
