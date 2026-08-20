@@ -118,9 +118,12 @@ without touching the coordinator or the entities.
 
 ```bash
 python3 tests/test_parse.py
+python3 tests/test_translations.py
 ```
 
-Runs without credentials and without Home Assistant installed.
+Both run without credentials and without Home Assistant installed. The CI
+additionally runs [hassfest](https://developers.home-assistant.io/docs/creating_component_manifest)
+and the HACS validation on every push.
 
 ## License
 
