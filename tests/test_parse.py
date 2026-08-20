@@ -88,10 +88,13 @@ RAW = {
     "POWER_C_L1": 300, "POWER_C_L2": 400, "POWER_C_L3": 500,
     "POWER_AC_L1": 600, "POWER_AC_L2": 600, "POWER_AC_L3": 600,
 }
-# Synthetic cumulative counters in watt-hours.
+# Synthetic cumulative counters in watt-hours, built the way the backend
+# reports them: NetIn is the export register and NetOut the import one, and
+# Production is the balance without the battery, so it satisfies
+# Production == Consumption + NetIn - NetOut exactly.
 ENERGY = {
-    "Production": 1000000.0, "Consumption": 800000.0,
-    "NetIn": 250000.0, "NetOut": 400000.0,
+    "Production": 950000.0, "Consumption": 800000.0,
+    "NetIn": 400000.0, "NetOut": 250000.0,
     "BatPowerIn": 300000.0, "BatPowerOut": 275500.0,
 }
 
@@ -151,12 +154,40 @@ def test_energy_balance():
 def test_energy_counters_converted_to_kwh():
     """Counters arrive in watt-hours and are exposed in kilowatt-hours."""
     out = parse(RAW, ENERGY)
-    assert out["pv_energy"] == 1000.0
     assert out["house_energy"] == 800.0
-    assert out["grid_import_energy"] == 250.0
-    assert out["grid_export_energy"] == 400.0
     assert out["battery_charge_energy"] == 300.0
     assert out["battery_discharge_energy"] == 275.5
+
+
+def test_grid_counters_are_named_from_the_grids_point_of_view():
+    """NetIn is the export register, NetOut the import one — not the reverse."""
+    out = parse(RAW, ENERGY)
+    assert out["grid_export_energy"] == 400.0, "NetIn must land on export"
+    assert out["grid_import_energy"] == 250.0, "NetOut must land on import"
+
+
+def test_pv_energy_adds_the_battery_back_in():
+    """Production omits the battery, so it is not the production counter.
+
+    Guards the identity the backend actually reports; a night-time reading with
+    no sun still moves Production, which is what makes the raw value unusable.
+    """
+    identity = ENERGY["Consumption"] + ENERGY["NetIn"] - ENERGY["NetOut"]
+    assert identity == ENERGY["Production"], "fixture no longer matches the backend"
+
+    out = parse(RAW, ENERGY)
+    assert out["pv_energy"] == 974.5
+    assert out["pv_energy"] != ENERGY["Production"] / 1000
+
+    # House load overnight: no sun, no grid flow, battery covering the house.
+    night = {
+        "Production": 950100.0, "Consumption": 800100.0,
+        "NetIn": 400000.0, "NetOut": 250000.0,
+        "BatPowerIn": 300000.0, "BatPowerOut": 275600.0,
+    }
+    assert parse(RAW_DISCHARGING, night)["pv_energy"] == 974.5, (
+        "derived production must stand still while the sun is down"
+    )
 
 
 def test_missing_energy_is_none():
@@ -164,6 +195,14 @@ def test_missing_energy_is_none():
     out = parse(RAW, {})
     assert out["pv_energy"] is None
     assert out["soc"] == 55
+
+
+def test_partial_energy_payload_leaves_pv_unknown():
+    """The derived counter needs all three registers, or it stays None."""
+    partial = dict(ENERGY)
+    del partial["BatPowerOut"]
+    assert parse(RAW, partial)["pv_energy"] is None
+    assert parse(RAW, {**ENERGY, "Production": None})["pv_energy"] is None
 
 
 def test_missing_registers_do_not_crash():
