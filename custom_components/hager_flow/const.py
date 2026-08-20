@@ -6,6 +6,10 @@ DOMAIN = "hager_flow"
 
 DEFAULT_BASE_URL = "https://e3dc.e3dc.com"
 
+# Shown to the user in the config flow; translation strings must not
+# contain URLs themselves, so it is passed in as a placeholder.
+PORTAL_URL = "https://flow.hager.com"
+
 CONF_REAUTH_TOKEN = "reauth_token"
 CONF_SERIAL = "serial"
 
