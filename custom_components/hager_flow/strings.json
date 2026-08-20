@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect Hager flow",
-        "description": "Sign in at https://flow.hager.com, then open the browser developer tools (F12) and copy the value of `reAuthToken` from Application → Local Storage.\n\nThe serial number is shown in the portal title bar and in its URL.",
+        "description": "Sign in at {portal_url}, then open the browser developer tools (F12) and copy the value of `reAuthToken` from Application → Local Storage.\n\nThe serial number is shown in the portal title bar and in its URL.",
         "data": {
           "serial": "Serial number",
           "reauth_token": "Refresh token (reAuthToken)"
@@ -15,7 +15,7 @@
       },
       "reauth_confirm": {
         "title": "Re-authenticate Hager flow",
-        "description": "The refresh token for installation {serial} has expired. Sign in at https://flow.hager.com again and copy the current `reAuthToken` from Application → Local Storage.",
+        "description": "The refresh token for installation {serial} has expired. Sign in at {portal_url} again and copy the current `reAuthToken` from Application → Local Storage.",
         "data": {
           "reauth_token": "Refresh token (reAuthToken)"
         }
@@ -34,25 +34,59 @@
   },
   "entity": {
     "sensor": {
-      "soc": { "name": "Battery level" },
-      "pv_power": { "name": "Solar power" },
-      "house_power": { "name": "House consumption" },
-      "battery_power": { "name": "Battery power" },
-      "grid_power": { "name": "Grid power" },
-      "inverter_power": { "name": "Inverter power" },
-      "battery_charge_power": { "name": "Battery charge power" },
-      "battery_discharge_power": { "name": "Battery discharge power" },
-      "grid_import_power": { "name": "Grid import power" },
-      "grid_export_power": { "name": "Grid export power" },
-      "pv_energy": { "name": "Solar energy" },
-      "house_energy": { "name": "House energy" },
-      "grid_import_energy": { "name": "Grid import energy" },
-      "grid_export_energy": { "name": "Grid export energy" },
-      "battery_charge_energy": { "name": "Battery charge energy" },
-      "battery_discharge_energy": { "name": "Battery discharge energy" }
+      "soc": {
+        "name": "Battery level"
+      },
+      "pv_power": {
+        "name": "Solar power"
+      },
+      "house_power": {
+        "name": "House consumption"
+      },
+      "battery_power": {
+        "name": "Battery power"
+      },
+      "grid_power": {
+        "name": "Grid power"
+      },
+      "inverter_power": {
+        "name": "Inverter power"
+      },
+      "battery_charge_power": {
+        "name": "Battery charge power"
+      },
+      "battery_discharge_power": {
+        "name": "Battery discharge power"
+      },
+      "grid_import_power": {
+        "name": "Grid import power"
+      },
+      "grid_export_power": {
+        "name": "Grid export power"
+      },
+      "pv_energy": {
+        "name": "Solar energy"
+      },
+      "house_energy": {
+        "name": "House energy"
+      },
+      "grid_import_energy": {
+        "name": "Grid import energy"
+      },
+      "grid_export_energy": {
+        "name": "Grid export energy"
+      },
+      "battery_charge_energy": {
+        "name": "Battery charge energy"
+      },
+      "battery_discharge_energy": {
+        "name": "Battery discharge energy"
+      }
     },
     "binary_sensor": {
-      "online": { "name": "Online" }
+      "online": {
+        "name": "Online"
+      }
     }
   }
 }

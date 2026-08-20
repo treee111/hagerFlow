@@ -22,7 +22,7 @@ from .api import (
     HagerFlowConnectionError,
     HagerFlowError,
 )
-from .const import CONF_REAUTH_TOKEN, CONF_SERIAL, DOMAIN
+from .const import CONF_REAUTH_TOKEN, CONF_SERIAL, DOMAIN, PORTAL_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,7 +83,10 @@ class HagerFlowConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = error
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_SCHEMA,
+            errors=errors,
+            description_placeholders={"portal_url": PORTAL_URL},
         )
 
     async def async_step_reauth(
@@ -112,5 +115,8 @@ class HagerFlowConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=STEP_REAUTH_SCHEMA,
             errors=errors,
-            description_placeholders={"serial": entry.data[CONF_SERIAL]},
+            description_placeholders={
+                "serial": entry.data[CONF_SERIAL],
+                "portal_url": PORTAL_URL,
+            },
         )
