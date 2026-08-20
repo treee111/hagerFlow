@@ -12,16 +12,9 @@ permissions: {}
 jobs:
   validate-hacs:
     runs-on: ubuntu-latest
-    # The HACS action clones the repository anonymously, which fails while the
-    # repository is private. HACS itself only supports public repositories, so
-    # there is nothing to validate until this one is published.
-    if: ${{ !github.event.repository.private }}
     steps:
       - uses: actions/checkout@v5
       - name: HACS validation
         uses: hacs/action@main
         with:
           category: integration
-          # The brand assets live in home-assistant/brands and are only
-          # required for integrations listed in the HACS default store.
-          ignore: brands
