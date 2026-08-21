@@ -23,6 +23,27 @@ def _phase_sum(raw: dict[str, Any], prefix: str, count: int = 3) -> int:
     return sum(int(raw.get(f"{prefix}{i}", 0) or 0) for i in range(1, count + 1))
 
 
+def _pv_energy(energy: dict[str, Any]) -> float | None:
+    """Derive the PV production counter in kilowatt-hours.
+
+    ``Production`` does not hold what its name promises. At every reading it
+    equals ``Consumption + NetIn - NetOut`` to the watt-hour, which is the
+    energy balance with the battery left out — so the value keeps climbing
+    overnight at roughly the house base load. Adding the battery registers back
+    restores the real production; cross-checked over a day against the
+    integrated live PV power, which it matches to within 0.2 %.
+    """
+    try:
+        derived = (
+            float(energy["Production"])
+            + float(energy["BatPowerIn"])
+            - float(energy["BatPowerOut"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return round(derived / 1000, 3)
+
+
 class HagerFlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetches live values frequently and energy counters on a slower cadence."""
 
@@ -97,15 +118,19 @@ class HagerFlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
         # Cumulative counters in watt-hours; absent until the first energy poll.
+        # The grid registers are named from the grid's point of view, not the
+        # installation's: ``NetIn`` counts energy going *into* the grid and is
+        # therefore the export counter, ``NetOut`` the import one.
         for key, source in (
-            ("pv_energy", "Production"),
             ("house_energy", "Consumption"),
-            ("grid_import_energy", "NetIn"),
-            ("grid_export_energy", "NetOut"),
+            ("grid_import_energy", "NetOut"),
+            ("grid_export_energy", "NetIn"),
             ("battery_charge_energy", "BatPowerIn"),
             ("battery_discharge_energy", "BatPowerOut"),
         ):
             value = energy.get(source)
             data[key] = round(float(value) / 1000, 3) if value is not None else None
+
+        data["pv_energy"] = _pv_energy(energy)
 
         return data
