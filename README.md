@@ -91,6 +91,23 @@ to the watt in both cases: solar plus battery discharge plus grid import equals 
 consumption plus battery charging plus grid export. Inverting either sign throws the
 balance off by hundreds of watts, so the mapping is unambiguous.
 
+The cumulative counters need two corrections before they mean what their names
+suggest, both established by integrating the live power over several hours and
+comparing the result against the counter differences:
+
+| Backend register | What it actually is |
+|---|---|
+| `NetIn` | grid **export** — the name is written from the grid's point of view |
+| `NetOut` | grid **import** |
+| `Production` | the balance *without* the battery, not the PV production |
+| `Consumption`, `BatPowerIn`, `BatPowerOut` | as expected |
+
+`Production` satisfies `Consumption + NetIn - NetOut` to the watt-hour at every
+reading, which is why it keeps climbing overnight at roughly the house base load.
+The integration therefore derives the PV counter as
+`Production + BatPowerIn - BatPowerOut`; over a full day that matches the integrated
+live PV power to within 0.2 %. With those corrections the counter balance closes.
+
 ## Known limitations
 
 - **Cloud dependent.** No data without internet access or during a portal outage.
@@ -98,14 +115,14 @@ balance off by hundreds of watts, so the mapping is unambiguous.
   web interface) nor Modbus TCP; Hager support can enable either one.
 - **The refresh token expires after ~30 days** and cannot be renewed automatically,
   because the refresh endpoint does not return a new one.
-- **The energy counters are the values the installation reports, and their totals do
-  not necessarily balance.** They are monotonic and stable, and reading them is
-  independent of the query window, so they work as `total_increasing` sources. But on
-  a system with a PV surplus diverter or similar controlled loads, the sum of house
-  consumption, export and battery charging can fall noticeably short of solar plus
-  import — such loads are not necessarily included in the consumption counter, and
-  battery conversion losses add to the gap. Compare the daily figures against the
-  portal before relying on them for billing.
+- **The counter register names cannot be taken at face value** — see the table above.
+  Upgrading from a version before this correction swaps grid import and export and
+  raises the PV counter by the battery charge, so the long-term statistics of those
+  three sensors are worth clearing once (*Developer tools → Statistics*); otherwise
+  the old, wrong values stay in the energy dashboard.
+- **The counters lag real time** by up to about 17 minutes and only advance on a
+  15-minute grid, so a short window compared against live power will not balance.
+  Over a few hours it does.
 - **Do not derive counters from the `from` field** of `history-values/difference`.
   Its snapshots are unreliable — solar production appears to rise overnight. Only the
   `to` field is used, which is the current reading; Home Assistant computes the
