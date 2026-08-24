@@ -22,6 +22,8 @@ from typing import Any
 import aiohttp
 
 from .backend import (
+    ENERGY_KEYS,
+    LIVE_KEYS,
     HagerFlowAuthError,
     HagerFlowConnectionError,
     HagerFlowError,
@@ -89,6 +91,11 @@ class HagerFlowApi:
     def device_key(self) -> str:
         """Stable identifier for this installation."""
         return self._serial
+
+    @property
+    def provided_keys(self) -> frozenset[str]:
+        """Everything in the vocabulary; this backend reports all of it."""
+        return LIVE_KEYS | ENERGY_KEYS
 
     async def _async_token(self, force_refresh: bool = False) -> str:
         """Return a valid access token, renewing it when necessary."""
