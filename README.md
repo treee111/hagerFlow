@@ -1,5 +1,11 @@
 # Hager flow for Home Assistant
 
+[![HACS custom repository][hacs-badge]][hacs-url]
+[![Release][release-badge]][release-url]
+[![HACS validation][hacs-ci-badge]][hacs-ci-url]
+[![hassfest][hassfest-badge]][hassfest-url]
+[![License: MIT][license-badge]](LICENSE)
+
 Home Assistant integration for the **Hager flow** battery storage system with PV
 (E3/DC hardware underneath). Provides live power readings, battery state of charge
 and cumulative energy counters — the latter ready to use in the energy dashboard.
@@ -58,6 +64,10 @@ The energy counters can be used directly in the energy dashboard:
 
 ### HACS
 
+[![Open your Home Assistant instance and open this repository inside HACS.][my-hacs-badge]][my-hacs-url]
+
+The button adds this repository to HACS on the instance you are signed in to. By hand:
+
 1. HACS → ⋮ → *Custom repositories*
 2. Add `https://github.com/treee111/hagerFlow`, category *Integration*
 3. Install "Hager flow", then restart Home Assistant
@@ -69,8 +79,10 @@ Home Assistant.
 
 ## Setup
 
-*Settings → Devices & Services → Add Integration → Hager flow*, then pick one of the
-two routes.
+[![Open your Home Assistant instance and start setting up a new integration.][my-config-badge]][my-config-url]
+
+Or by hand: *Settings → Devices & Services → Add Integration → Hager flow*. Either
+way, pick one of the two routes.
 
 ### Official API (recommended)
 
@@ -334,9 +346,24 @@ python3 tests/test_translations.py
 ```
 
 Both run without credentials and without Home Assistant installed. The CI
-additionally runs [hassfest](https://developers.home-assistant.io/docs/creating_component_manifest)
+additionally runs [hassfest](https://developers.home-assistant.io/docs/creating_integration_manifest)
 and the HACS validation on every push.
 
 ## License
 
 MIT
+
+<!-- Badge definitions, kept out of the prose. -->
+[hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
+[hacs-url]: https://hacs.xyz/docs/faq/custom_repositories
+[release-badge]: https://img.shields.io/github/v/release/treee111/hagerFlow?display_name=tag&sort=semver
+[release-url]: https://github.com/treee111/hagerFlow/releases
+[hacs-ci-badge]: https://github.com/treee111/hagerFlow/actions/workflows/validate.yaml/badge.svg
+[hacs-ci-url]: https://github.com/treee111/hagerFlow/actions/workflows/validate.yaml
+[hassfest-badge]: https://github.com/treee111/hagerFlow/actions/workflows/hassfest.yaml/badge.svg
+[hassfest-url]: https://github.com/treee111/hagerFlow/actions/workflows/hassfest.yaml
+[license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[my-hacs-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
+[my-hacs-url]: https://my.home-assistant.io/redirect/hacs_repository/?owner=treee111&repository=hagerFlow&category=integration
+[my-config-badge]: https://my.home-assistant.io/badges/config_flow_start.svg
+[my-config-url]: https://my.home-assistant.io/redirect/config_flow_start/?domain=hager_flow
