@@ -4,25 +4,38 @@ Home Assistant integration for the **Hager flow** battery storage system with PV
 (E3/DC hardware underneath). Provides live power readings, battery state of charge
 and cumulative energy counters — the latter ready to use in the energy dashboard.
 
-> **Unofficial.** This integration uses the undocumented API behind the flow portal.
-> Hager now offers an official one at [developer.hagerenergy.com](https://developer.hagerenergy.com/)
-> — see [Looking ahead](#looking-ahead-the-official-api).
+> **Two ways in.** Preferred is Hager's official API at
+> [developer.hagerenergy.com](https://developer.hagerenergy.com/): documented, and its
+> credentials do not expire. The undocumented API behind the flow portal stays
+> available for anyone without API access, at the price of a token that has to be
+> replaced roughly every 30 days. Both produce the same set of entities.
 
 ## Entities
 
 | Entity | Unit | Notes |
 |---|---|---|
 | Battery level | % | |
-| Solar power | W | sum of all strings, DC side |
+| Solar power | W | |
 | House consumption | W | derived by the device, includes the inverter losses |
 | Battery power | W | positive = charging, negative = discharging |
 | Grid power | W | positive = import, negative = export |
 | Inverter power | W | disabled by default |
-| Solar energy | kWh | cumulative, `total_increasing`, AC side |
+| Solar energy | kWh | cumulative, `total_increasing` |
 | House energy | kWh | cumulative |
 | Grid import / export energy | kWh | cumulative |
 | Battery charge / discharge energy | kWh | cumulative |
-| Online | — | connection to the portal |
+| Online | — | connection to the cloud |
+
+Three of those mean slightly different things depending on which backend is in use:
+
+| Entity | official API | flow portal |
+|---|---|---|
+| Solar power | installation total | sum of the three string registers |
+| Solar energy | gross DC yield, reported as such | the AC balance, derived — a few percent lower, and [here is why](#the-counters-are-ac-the-pv-power-register-is-dc) |
+| Inverter power | not available, stays unknown | sum of the AC phase registers |
+
+Both report solar *power* on the DC side, before the inverter; only the counter
+behind *Solar energy* differs.
 
 There are also unsigned power variants (charge power, discharge power, grid import,
 grid export), disabled by default — handy for automations without templates.
@@ -48,9 +61,23 @@ Home Assistant.
 
 ## Setup
 
-*Settings → Devices & Services → Add Integration → Hager flow*
+*Settings → Devices & Services → Add Integration → Hager flow*, then pick one of the
+two routes.
 
-Two values are needed:
+### Official API (recommended)
+
+Request access at [developer.hagerenergy.com](https://developer.hagerenergy.com/).
+Self-service through the MyE3/DC portal is announced; until then Hager creates the
+OAuth client on request. You receive a **client ID** and a **client secret** — enter
+both, and the integration finds your installation itself. If the credentials cover
+more than one, it asks which.
+
+Client ID and secret do not expire. The integration derives a five-minute access
+token from them and renews it on its own, so nothing has to be replaced by hand.
+
+### flow portal
+
+Needs no API access. Two values:
 
 **Serial number** — shown in the portal title bar and in its URL, a twelve-digit
 number.
@@ -66,7 +93,94 @@ The token is valid for roughly **30 days**. When it expires, Home Assistant repo
 repair issue and asks for a new one through the regular reauth dialog — there is no
 need to set the integration up again.
 
+### Running both at once
+
+Nothing stops you from adding the same installation twice, once per route, but the
+two entries identify it differently — by serial number on the portal, by installation
+id on the official API. Home Assistant therefore sees two devices with two full sets
+of entities rather than recognising them as one. The entry title names the route, so
+the two stay tellable apart.
+
+Side by side the two agree on everything except the solar counter, which is the whole
+point: same live power to the watt, same grid, house and battery counters to the
+decimal, and a solar counter that sits a few percent higher on the official route
+because it is the gross DC yield.
+
+There is no automatic migration between the routes. To move an existing setup over
+without losing its history:
+
+1. Add the official route and let it run alongside for a while, comparing the two
+2. Delete the old entry, which removes its entities but leaves their statistics
+3. Rename the new entities from `..._2` back to the old entity ids, so they pick up
+   those statistics again
+
+Step 3 logs an error per entity, which is expected and harmless:
+
+```
+Cannot rename statistic_id `sensor.…_2` to `sensor.…`
+because the new statistic_id is already in use
+```
+
+The *entity* is renamed all the same, and from then on it writes into the existing
+series — which is exactly the point of renaming it. Only the short `..._2` series
+recorded while both routes ran are left behind; clear those under *Developer tools →
+Statistics*.
+
+Step 3 then needs one correction, and only for the solar counter. Going from the AC
+balance to the gross DC yield is a jump upwards of a few percent of everything
+produced so far, and a `total_increasing` sensor reads a jump upwards as production —
+so the energy dashboard would show one enormous solar hour. Wait until the hour
+containing the jump has been compiled, which happens on the next full hour; before
+that there is nothing to adjust and the attempt silently does nothing. Then use
+*Adjust sum* on that hour, subtracting the difference between the two counters as
+read at the same moment. What remains is the production that really happened in that
+hour, so the figure is measured rather than estimated.
+
+Purging the counter's statistics instead also works, at the price of its whole
+history — which is a poor trade, because the old values are not wrong. They are the
+AC yield, a different and equally valid quantity, so what the switch leaves behind is
+a change of definition on one date rather than an error to be erased.
+
+The other five counters need no such care: they carry the same values on both routes,
+usually to the last decimal.
+
 ## How it works
+
+Both backends normalise their own registers into one shared vocabulary, so the
+coordinator and the entities never see which one is in use. `backend.py` states that
+contract; `api.py` and `api_official.py` implement it.
+
+Live values are polled every 30 s and the cumulative counters every 5 minutes. The
+slower cadence for the counters is not a compromise: on both backends they only
+advance on a 15-minute grid and lag real time by about 17 minutes anyway, so polling
+them more often would just repeat the same numbers.
+
+### Official API
+
+An OAuth 2 client credentials grant against Hager Energy's identity provider, then
+plain REST:
+
+```
+POST /realms/customer/protocol/openid-connect/token  grant_type=client_credentials
+GET  /v1/installations                               discover the installation id
+GET  /v1/installations/{id}/energy/current           live flows in W
+GET  /v1/installations/{id}/energy/total             cumulative counters in Wh
+```
+
+The access token lives five minutes and the flow has no refresh token, so an expired
+one is simply requested again. Responses are JSend-wrapped — the payload sits in
+`data`.
+
+The mapping is one to one. Nothing has to be derived, and no register name misleads:
+`pvProduction`, `gridFeedIn`, `gridConsumption`, `consumption`, `batteryCharge` and
+`batteryDischarge` all mean what they say. `pvProduction` in particular is the gross
+DC yield, which the portal backend cannot report at all — there it has to be derived,
+and what comes out is the AC balance, a few percent lower.
+
+There is no online flag on `energy/current`; the reading carries a timestamp that
+advances every 10 to 30 seconds, so a stale one is what marks the system offline.
+
+### flow portal
 
 The flow portal is a frontend for the E3/DC cloud. The integration signs in with the
 long-lived refresh token, derives a short-lived access token (10 minutes) from it and
@@ -77,10 +191,6 @@ POST /auth-saml/re-auth   {"reAuthToken": "..."}  ->  {"token": "..."}
 GET  /storages/{SN}/status                            Authorization: Bearer <token>
 GET  /storages/{SN}/history-values/difference         cumulative counters in Wh
 ```
-
-Live values are polled every 30 s and the energy counters every 5 minutes — the
-latter only advance on a 15-minute grid anyway and lag real time by up to about
-17 minutes. That is irrelevant for the energy dashboard.
 
 Battery, grid and consumption are reported per phase and PV per string; the
 integration sums each group.
@@ -114,7 +224,7 @@ grid import and both battery counters agree with it to well under one percent, a
 swapping `NetIn` and `NetOut` puts grid import and export off by an order of
 magnitude on a sunny day.
 
-### The counters are AC, the PV power register is DC
+#### The counters are AC, the PV power register is DC
 
 The PV counter is the one place where that comparison does not land on the nose.
 Integrated over a full day, the live `POWER_PV_S*` sum comes out a few percent
@@ -136,49 +246,58 @@ balance closes to the watt while `POWER_C_L*` integrated over a day exceeds the
 `Consumption` counter by the *same absolute amount* that PV does. The live house
 figure carries the inverter losses; the counter does not.
 
-For the energy dashboard the AC basis is the right one, since every other counter is
-AC too. Just do not expect *Solar power* integrated over a day to equal *Solar
-energy* — the difference is the inverter, not a bug.
+For the energy dashboard the AC basis is the right one here, since every other
+counter this backend reports is AC too. Just do not expect *Solar power* integrated
+over a day to equal *Solar energy* — the difference is the inverter, not a bug.
+
+None of this applies to the official API, which reports the gross DC yield as
+`pvProduction` and needs no derivation at all.
 
 ## Known limitations
 
-- **Cloud dependent.** No data without internet access or during a portal outage.
+- **Cloud dependent.** No data without internet access or during a cloud outage.
   Locally the device offers neither a settable RSCP key (there is no configuration
   web interface) nor Modbus TCP; Hager support can enable either one.
+- **The counters lag real time** by about 17 minutes and only advance on a 15-minute
+  grid, on both routes, so a short window compared against live power will not
+  balance. Over a few hours it does.
+- **Read only.** This integration only reads. The official API does expose write
+  endpoints — the grid feed-in limit, and wallbox controls once e-mobility goes live
+  — but none of them are wired up here.
+
+Only on the flow portal route:
+
 - **The refresh token expires after ~30 days** and cannot be renewed automatically,
-  because the refresh endpoint does not return a new one.
+  because the refresh endpoint does not return a new one. The official API has no
+  such limit.
 - **The counter register names cannot be taken at face value** — see the table above.
   Upgrading from a version before this correction swaps grid import and export and
   raises the PV counter by the battery charge, so the long-term statistics of those
   three sensors are worth clearing once (*Developer tools → Statistics*); otherwise
   the old, wrong values stay in the energy dashboard.
-- **The counters lag real time** by up to about 17 minutes and only advance on a
-  15-minute grid, so a short window compared against live power will not balance.
-  Over a few hours it does.
 - **Power and energy are measured on different sides of the inverter.** Solar power
-  is DC, all energy counters are AC, and house power is a residual that includes the
+  is DC, the counters are AC, and house power is a residual that includes the
   conversion losses — see [above](#the-counters-are-ac-the-pv-power-register-is-dc).
-  Integrating a power entity will therefore not reproduce the matching counter.
+  Integrating a power entity will therefore not reproduce the matching counter, and
+  the solar counter is the AC balance rather than the gross yield. This backend has
+  no register for the DC yield; the official API reports it directly.
 - **Do not derive counters from the `from` field** of `history-values/difference`.
   Its snapshots are unreliable — solar production appears to rise overnight. Only the
   `to` field is used, which is the current reading; Home Assistant computes the
   differences itself.
-- **Read only.** No control over the installation.
 - Undocumented API that may change at any time.
 
-## Looking ahead: the official API
+## What the official API also offers
 
-Hager runs an official, documented API at
-[developer.hagerenergy.com](https://developer.hagerenergy.com/) (REST, OAuth 2,
-OpenAPI) with endpoints for energy flows, installations and e-mobility. According to
-the documentation it is *"available to all customers of E3/DC and Hager Flow"*;
-self-service access through the portal is announced, and for now there is preview
-access on request at **api-team@e3dc.com**.
+Not read by this integration yet: hourly, daily,
+weekly, monthly and yearly energy history, per-device measurements including the
+inverter's AC output and per-string DC input, the PV configuration (installed
+capacity, feed-in limit) and both a production and a consumption forecast. Wallbox
+endpoints are announced but not live.
 
-Once access is granted it should be preferred over this route: documented, stable,
-and with a proper OAuth refresh token instead of a 30-day expiry. That is why backend
-access is isolated in `api.py`, so a second implementation can be added alongside it
-without touching the coordinator or the entities.
+The forecasts in particular would make good entities. They are left out for now to
+keep the first version of this backend to the same entity set the portal one
+produces.
 
 ## Tests
 

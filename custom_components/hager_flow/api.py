@@ -21,6 +21,11 @@ from typing import Any
 
 import aiohttp
 
+from .backend import (
+    HagerFlowAuthError,
+    HagerFlowConnectionError,
+    HagerFlowError,
+)
 from .const import DEFAULT_BASE_URL
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,16 +36,14 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
 TOKEN_REFRESH_MARGIN = 60
 
 
-class HagerFlowError(Exception):
-    """Base error for this client."""
-
-
-class HagerFlowAuthError(HagerFlowError):
-    """The refresh token was rejected and the user has to supply a new one."""
-
-
-class HagerFlowConnectionError(HagerFlowError):
-    """The backend could not be reached or returned an unexpected status."""
+__all__ = [
+    "HagerFlowApi",
+    "HagerFlowAuthError",
+    "HagerFlowConnectionError",
+    "HagerFlowError",
+    "REQUEST_TIMEOUT",
+    "TOKEN_REFRESH_MARGIN",
+]
 
 
 def _jwt_expiry(token: str) -> float | None:
@@ -80,6 +83,11 @@ class HagerFlowApi:
     @property
     def serial(self) -> str:
         """Serial number of the storage system."""
+        return self._serial
+
+    @property
+    def device_key(self) -> str:
+        """Stable identifier for this installation."""
         return self._serial
 
     async def _async_token(self, force_refresh: bool = False) -> str:
@@ -164,7 +172,7 @@ class HagerFlowApi:
         """Return the current live values."""
         return await self._async_get(f"/storages/{self._serial}/status")
 
-    async def async_get_energy(self) -> dict[str, Any]:
+    async def async_get_energy_registers(self) -> dict[str, Any]:
         """Return cumulative energy counters in watt-hours.
 
         The endpoint reports a ``from``/``to`` pair; ``to`` holds the most recent
@@ -183,3 +191,89 @@ class HagerFlowApi:
         """Return static metadata about the storage system."""
         data = await self._async_get(f"/storages/{self._serial}")
         return data if isinstance(data, dict) else {}
+
+    async def async_get_live(self) -> dict[str, Any]:
+        """Return the normalised live values."""
+        return normalise_live(await self.async_get_status())
+
+    async def async_get_energy(self) -> dict[str, Any]:
+        """Return the normalised cumulative counters in kilowatt-hours."""
+        return normalise_energy(await self.async_get_energy_registers())
+
+
+def _phase_sum(raw: dict[str, Any], prefix: str, count: int = 3) -> int:
+    """Sum the per-phase or per-string registers sharing a prefix."""
+    return sum(int(raw.get(f"{prefix}{i}", 0) or 0) for i in range(1, count + 1))
+
+
+def _pv_energy(energy: dict[str, Any]) -> float | None:
+    """Derive the PV production counter in kilowatt-hours.
+
+    ``Production`` does not hold what its name promises. At every reading it
+    equals ``Consumption + NetIn - NetOut`` to the watt-hour, which is the
+    energy balance with the battery left out — so the value keeps climbing
+    overnight at roughly the house base load. Adding the battery registers back
+    restores the real production.
+
+    Like every other counter this one is AC, while ``POWER_PV_S*`` is DC string
+    power, so integrating the live PV power over a day yields a few percent
+    more — that difference is the inverter, not an error. This backend has no
+    register for the gross DC yield; the official API reports it directly as
+    ``pvProduction``. See the README.
+    """
+    try:
+        derived = (
+            float(energy["Production"])
+            + float(energy["BatPowerIn"])
+            - float(energy["BatPowerOut"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return round(derived / 1000, 3)
+
+
+def normalise_live(raw: dict[str, Any]) -> dict[str, Any]:
+    """Turn the raw status registers into the shared vocabulary.
+
+    Battery, grid and consumption registers are reported per phase and PV per
+    string, so each group is summed. Sign convention: positive means charging
+    the battery and importing from the grid.
+    """
+    battery = _phase_sum(raw, "POWER_BAT_")
+    grid = _phase_sum(raw, "POWER_ROOTLM_L")
+
+    return {
+        "soc": raw.get("SOC"),
+        "pv_power": _phase_sum(raw, "POWER_PV_S"),
+        "house_power": _phase_sum(raw, "POWER_C_L"),
+        "inverter_power": _phase_sum(raw, "POWER_AC_L"),
+        "battery_power": battery,
+        "battery_charge_power": max(battery, 0),
+        "battery_discharge_power": max(-battery, 0),
+        "grid_power": grid,
+        "grid_import_power": max(grid, 0),
+        "grid_export_power": max(-grid, 0),
+        "online": raw.get("offlineLevel") == 0,
+    }
+
+
+def normalise_energy(energy: dict[str, Any]) -> dict[str, Any]:
+    """Turn the raw counter registers into kilowatt-hours.
+
+    The grid registers are named from the grid's point of view, not the
+    installation's: ``NetIn`` counts energy going *into* the grid and is
+    therefore the export counter, ``NetOut`` the import one.
+    """
+    data: dict[str, Any] = {}
+    for key, source in (
+        ("house_energy", "Consumption"),
+        ("grid_import_energy", "NetOut"),
+        ("grid_export_energy", "NetIn"),
+        ("battery_charge_energy", "BatPowerIn"),
+        ("battery_discharge_energy", "BatPowerOut"),
+    ):
+        value = energy.get(source)
+        data[key] = round(float(value) / 1000, 3) if value is not None else None
+
+    data["pv_energy"] = _pv_energy(energy)
+    return data
