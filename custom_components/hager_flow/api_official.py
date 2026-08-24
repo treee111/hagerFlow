@@ -22,6 +22,8 @@ import aiohttp
 
 from .api import REQUEST_TIMEOUT, TOKEN_REFRESH_MARGIN
 from .backend import (
+    ENERGY_KEYS,
+    LIVE_KEYS,
     HagerFlowAuthError,
     HagerFlowConnectionError,
     HagerFlowError,
@@ -71,6 +73,15 @@ class HagerFlowOfficialApi:
     def device_key(self) -> str:
         """Stable identifier for this installation."""
         return self._require_installation()
+
+    @property
+    def provided_keys(self) -> frozenset[str]:
+        """Everything but the inverter output, which this API does not report.
+
+        ``energy/current`` carries no AC output figure. It exists on the device
+        measurements, which are a separate request this client does not make.
+        """
+        return (LIVE_KEYS - {"inverter_power"}) | ENERGY_KEYS
 
     async def _async_token(self, force_refresh: bool = False) -> str:
         """Return a valid access token, requesting a new one when necessary."""
