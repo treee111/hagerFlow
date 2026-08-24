@@ -8,7 +8,10 @@ Runs without Home Assistant installed and without any credentials:
 import importlib.util
 import sys
 import types
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "hager_flow"
 
@@ -60,11 +63,53 @@ _stub(
 _stub("homeassistant.util")
 _stub("homeassistant.util.dt", utcnow=lambda: None)
 
+
+@dataclass(frozen=True, kw_only=True)
+class _EntityDescription:
+    """Stand-in for SensorEntityDescription, kept dataclass-compatible.
+
+    The real one is a frozen keyword-only dataclass, and the integration
+    subclasses it, so the stub has to be one too or the subclass will not
+    build.
+    """
+
+    key: str
+    translation_key: str | None = None
+    device_class: Any = None
+    state_class: Any = None
+    native_unit_of_measurement: str | None = None
+    entity_registry_enabled_default: bool = True
+    suggested_display_precision: int | None = None
+
+
+_stub(
+    "homeassistant.components.sensor",
+    SensorDeviceClass=SimpleNamespace(
+        BATTERY="battery", POWER="power", ENERGY="energy"
+    ),
+    SensorEntity=object,
+    SensorEntityDescription=_EntityDescription,
+    SensorStateClass=SimpleNamespace(
+        MEASUREMENT="measurement", TOTAL_INCREASING="total_increasing"
+    ),
+)
+_stub(
+    "homeassistant.const",
+    PERCENTAGE="%",
+    UnitOfEnergy=SimpleNamespace(KILO_WATT_HOUR="kWh"),
+    UnitOfPower=SimpleNamespace(WATT="W"),
+    Platform=SimpleNamespace(SENSOR="sensor", BINARY_SENSOR="binary_sensor"),
+)
+_stub("homeassistant.helpers.entity", EntityDescription=_EntityDescription)
+_stub("homeassistant.helpers.entity_platform", AddEntitiesCallback=object)
+_stub("homeassistant.helpers.device_registry", DeviceInfo=dict)
+sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = _Coordinator
+
 package = types.ModuleType("hager_flow")
 package.__path__ = [str(COMPONENT)]
 sys.modules["hager_flow"] = package
 
-for name in ("const", "backend", "api", "api_official", "coordinator"):
+for name in ("const", "backend", "api", "api_official", "coordinator", "entity", "sensor"):
     spec = importlib.util.spec_from_file_location(
         f"hager_flow.{name}", COMPONENT / f"{name}.py"
     )
@@ -310,6 +355,67 @@ def test_official_missing_payload_yields_none():
     """An empty payload leaves every counter unknown rather than zero."""
     out = api_official.normalise_energy({})
     assert set(out.values()) == {None}
+
+
+def test_backends_declare_what_they_can_supply():
+    """Neither backend may claim a key it cannot fill, or omit one it can.
+
+    The official API reports no inverter output on the installation-level
+    endpoint, so that sensor must not be registered on this route — an entity
+    that could only ever be unknown is worse than an absent one.
+    """
+    from hager_flow.api import HagerFlowApi
+    from hager_flow.api_official import HagerFlowOfficialApi
+    from hager_flow.backend import ALL_KEYS
+
+    portal = HagerFlowApi.provided_keys.fget(None)
+    official = HagerFlowOfficialApi.provided_keys.fget(None)
+
+    assert portal <= ALL_KEYS and official <= ALL_KEYS
+    assert "inverter_power" in portal
+    assert "inverter_power" not in official
+
+    # The reverse direction: everything a parser actually produces has to be
+    # claimed by that same backend, so a key cannot be added on one side alone.
+    assert set(parse(RAW, ENERGY)) <= portal
+    assert set(api_official.normalise_live(CURRENT)) - {"inverter_power"} <= official
+    assert set(api_official.normalise_energy(TOTAL)) <= official
+
+
+def test_platform_registers_only_what_the_backend_supplies():
+    """The declaration has to reach the platform, not just sit in the client.
+
+    Exercises async_setup_entry itself rather than a copy of its filter, so
+    dropping the filter fails here.
+    """
+    import asyncio
+
+    from hager_flow import sensor as sensor_platform
+    from hager_flow.api import HagerFlowApi
+    from hager_flow.api_official import HagerFlowOfficialApi
+
+    def registered(provided):
+        added = []
+        coordinator = SimpleNamespace(
+            api=SimpleNamespace(device_key="X", provided_keys=provided),
+            device_info_raw={},
+            data={},
+        )
+        asyncio.run(
+            sensor_platform.async_setup_entry(
+                None, SimpleNamespace(runtime_data=coordinator), added.extend
+            )
+        )
+        return {entity.entity_description.data_key for entity in added}
+
+    portal = registered(HagerFlowApi.provided_keys.fget(None))
+    official = registered(HagerFlowOfficialApi.provided_keys.fget(None))
+
+    assert "inverter_power" in portal
+    assert "inverter_power" not in official, (
+        "the official route must not register a sensor it can never fill"
+    )
+    assert official == portal - {"inverter_power"}
 
 
 def test_jwt_expiry():

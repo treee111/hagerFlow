@@ -32,10 +32,16 @@ Three of those mean slightly different things depending on which backend is in u
 |---|---|---|
 | Solar power | installation total | sum of the three string registers |
 | Solar energy | gross DC yield, reported as such | the AC balance, derived — a few percent lower, and [here is why](#the-counters-are-ac-the-pv-power-register-is-dc) |
-| Inverter power | not available, stays unknown | sum of the AC phase registers |
+| Inverter power | not registered | sum of the AC phase registers |
 
 Both report solar *power* on the DC side, before the inverter; only the counter
 behind *Solar energy* differs.
+
+*Inverter power* is not merely unavailable on the official route — it is not created
+at all. Each backend declares what it can supply and the platforms register only
+that, because an entity that could never hold a value is worse than an absent one.
+The figure exists on that API's per-device measurements, which are a separate request
+this integration does not make.
 
 There are also unsigned power variants (charge power, discharge power, grid import,
 grid export), disabled by default — handy for automations without templates.

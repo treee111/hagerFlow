@@ -179,11 +179,13 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Hager flow sensors."""
+    """Set up the sensors the configured backend can actually supply."""
     coordinator: HagerFlowCoordinator = entry.runtime_data
+    provided = coordinator.api.provided_keys
     async_add_entities(
         HagerFlowSensor(coordinator, description)
         for description in POWER_SENSORS + ENERGY_SENSORS
+        if description.data_key in provided
     )
 
 
