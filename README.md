@@ -325,7 +325,7 @@ python3 tests/test_translations.py
 ```
 
 Both run without credentials and without Home Assistant installed. The CI
-additionally runs [hassfest](https://developers.home-assistant.io/docs/creating_component_manifest)
+additionally runs [hassfest](https://developers.home-assistant.io/docs/creating_integration_manifest)
 and the HACS validation on every push.
 
 ## License
