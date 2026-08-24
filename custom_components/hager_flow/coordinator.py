@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,6 +21,7 @@ from .backend import (
 from .const import (
     DOMAIN,
     ENERGY_UPDATE_INTERVAL,
+    FORECAST_RETRY_INTERVAL,
     FORECAST_UPDATE_INTERVAL,
     UPDATE_INTERVAL,
 )
@@ -52,6 +53,8 @@ class HagerFlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._energy_fetched_at: datetime | None = None
         self._forecast: dict[str, Any] = {}
         self._forecast_fetched_at: datetime | None = None
+        self._forecast_day: date | None = None
+        self._forecast_complete = False
 
     async def _async_setup(self) -> None:
         """Fetch static device metadata once, before the first refresh."""
@@ -94,20 +97,43 @@ class HagerFlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         if not FORECAST_KEYS & self.api.provided_keys:
             return
+
+        today = dt_util.now().date()
+        rolled_over = self._forecast_day != today
+        # A short answer is retried sooner than a complete one, but never on
+        # every live cycle.
+        interval = (
+            FORECAST_UPDATE_INTERVAL if self._forecast_complete
+            else FORECAST_RETRY_INTERVAL
+        )
         if (
-            self._forecast_fetched_at is not None
-            and now - self._forecast_fetched_at < FORECAST_UPDATE_INTERVAL
+            not rolled_over
+            and self._forecast_fetched_at is not None
+            and now - self._forecast_fetched_at < interval
         ):
             return
 
+        if rolled_over:
+            # Yesterday's answer is not merely stale, it is mislabelled: what
+            # it calls today is now yesterday. Drop it rather than merge into
+            # it, so a failed fetch leaves the sensors unknown instead of
+            # confidently wrong.
+            self._forecast = {}
+            self._forecast_complete = False
+
+        # Stamped before the call, not after: a backend whose forecast is down
+        # or absent must not be retried on every 30 second live cycle.
+        self._forecast_fetched_at = now
+        self._forecast_day = today
+
         try:
-            forecast = await self.api.async_get_forecast()
+            forecast = await self.api.async_get_forecast(today)
         except HagerFlowError as err:
             _LOGGER.debug("Forecast unavailable: %s", err)
             return
 
-        # An empty answer keeps the previous forecast rather than blanking the
-        # sensors, but is not treated as a successful poll.
-        if forecast:
-            self._forecast = forecast
-            self._forecast_fetched_at = now
+        # Merged per key rather than replaced: the two days are separate
+        # requests, and one of them failing must not discard the other day's
+        # good value from an earlier poll.
+        self._forecast.update(forecast)
+        self._forecast_complete = FORECAST_KEYS <= set(self._forecast)

@@ -45,4 +45,9 @@ ENERGY_UPDATE_INTERVAL = timedelta(minutes=5)
 # more than an hourly poll.
 FORECAST_UPDATE_INTERVAL = timedelta(hours=1)
 
+# How soon to try again when a poll came back short — the backend has been
+# seen to serve one day before the other around midnight. Long enough that a
+# backend without a forecast is not hammered on every live cycle.
+FORECAST_RETRY_INTERVAL = timedelta(minutes=5)
+
 MANUFACTURER = "Hager Energy GmbH"

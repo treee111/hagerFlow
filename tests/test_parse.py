@@ -9,6 +9,7 @@ import importlib.util
 import sys
 import types
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -61,7 +62,11 @@ _stub(
     UpdateFailed=type("UpdateFailed", (Exception,), {}),
 )
 _stub("homeassistant.util")
-_stub("homeassistant.util.dt", utcnow=lambda: None)
+_stub(
+    "homeassistant.util.dt",
+    utcnow=lambda: datetime.now(timezone.utc),
+    now=lambda: datetime.now(),
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,6 +123,7 @@ for name in ("const", "backend", "api", "api_official", "coordinator", "entity",
     spec.loader.exec_module(module)
 
 from hager_flow import api_official  # noqa: E402
+from hager_flow.backend import ALL_KEYS as ALL_BACKEND_KEYS  # noqa: E402
 from hager_flow.api import _jwt_expiry, normalise_energy, normalise_live  # noqa: E402
 
 
@@ -459,6 +465,139 @@ def test_platform_registers_only_what_the_backend_supplies():
     # The forecast runs the other way: only the official route registers it.
     assert {"pv_forecast_today", "pv_forecast_tomorrow"} <= official
     assert not {"pv_forecast_today", "pv_forecast_tomorrow"} & portal
+
+
+class _FakeBackend:
+    """A backend whose forecast answers are scripted by the test."""
+
+    provided_keys = ALL_BACKEND_KEYS
+
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.calls = []
+
+    async def async_get_live(self):
+        return {"pv_power": 1}
+
+    async def async_get_energy(self):
+        return {}
+
+    async def async_get_forecast(self, today=None):
+        self.calls.append(today)
+        answer = self.answers.pop(0) if self.answers else {}
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def _coordinator(backend):
+    """Build a coordinator without going through DataUpdateCoordinator."""
+    from hager_flow.coordinator import HagerFlowCoordinator
+
+    c = HagerFlowCoordinator.__new__(HagerFlowCoordinator)
+    c.api = backend
+    c._energy = {}
+    c._energy_fetched_at = None
+    c._forecast = {}
+    c._forecast_fetched_at = None
+    c._forecast_day = None
+    c._forecast_complete = False
+    return c
+
+
+def _run_cycles(coordinator, count, start, step):
+    """Drive the forecast refresh over a number of live cycles."""
+    import asyncio
+
+    for i in range(count):
+        asyncio.run(coordinator._async_refresh_forecast(start + step * i))
+
+
+BOTH_DAYS = {
+    "pv_forecast_today": 4.0,
+    "pv_forecast_today_hourly": [],
+    "pv_forecast_tomorrow": 5.0,
+    "pv_forecast_tomorrow_hourly": [],
+}
+
+
+def test_a_forecast_that_never_lands_is_not_refetched_every_cycle():
+    """An unanswerable forecast must not turn into a permanent poll loop.
+
+    Live values are polled every 30 s. Stamping the attempt only on success
+    would send two HTTP requests every cycle, for ever, against exactly the
+    installations whose forecast the backend has no model for.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from hager_flow.backend import HagerFlowError
+
+    start = datetime(2099, 6, 21, 12, 0, tzinfo=timezone.utc)
+    for answers in ([{}] * 40, [HagerFlowError("down")] * 40):
+        backend = _FakeBackend(answers)
+        coordinator = _coordinator(backend)
+        _run_cycles(coordinator, 20, start, timedelta(seconds=30))
+        # 10 minutes of live cycles, retried on the 5 minute short interval.
+        assert len(backend.calls) <= 3, (
+            f"{len(backend.calls)} forecast calls in 10 minutes of live cycles"
+        )
+
+
+def test_a_missing_day_does_not_discard_the_other_one():
+    """The two days are separate requests; one failing must not erase the other."""
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2099, 6, 21, 12, 0, tzinfo=timezone.utc)
+    today_only = {"pv_forecast_today": 6.0, "pv_forecast_today_hourly": []}
+
+    backend = _FakeBackend([BOTH_DAYS, today_only])
+    coordinator = _coordinator(backend)
+    _run_cycles(coordinator, 1, start, timedelta())
+    _run_cycles(coordinator, 1, start + timedelta(hours=2), timedelta())
+
+    # .get, not [], so a dropped key fails as an assertion rather than a
+    # KeyError that takes the whole run down with it.
+    assert coordinator._forecast.get("pv_forecast_today") == 6.0, "today must update"
+    assert coordinator._forecast.get("pv_forecast_tomorrow") == 5.0, (
+        "tomorrow was fetched successfully earlier and must survive"
+    )
+
+
+def test_the_forecast_is_refetched_when_the_day_rolls_over():
+    """After midnight the cached answer is mislabelled, not merely stale."""
+    from datetime import datetime, timedelta, timezone
+
+    import hager_flow.coordinator as coordinator_module
+
+    day = [datetime(2099, 6, 21, 23, 30, tzinfo=timezone.utc)]
+    coordinator_module.dt_util.now = lambda: day[0]
+
+    backend = _FakeBackend([BOTH_DAYS, BOTH_DAYS])
+    coordinator = _coordinator(backend)
+    _run_cycles(coordinator, 1, day[0], timedelta())
+    assert len(backend.calls) == 1
+
+    # 00:05 the next day: half an hour later, so the hourly interval has not
+    # elapsed, but the labels have gone stale.
+    day[0] = datetime(2099, 6, 22, 0, 5, tzinfo=timezone.utc)
+    _run_cycles(coordinator, 1, day[0], timedelta())
+    assert len(backend.calls) == 2, "the day boundary must force a refresh"
+    assert backend.calls[-1] == day[0].date(), "and must ask for the new day"
+
+
+def test_the_day_comes_from_home_assistant_not_the_process():
+    """The day is passed down rather than read from the process clock."""
+    import inspect
+
+    from hager_flow.api_official import HagerFlowOfficialApi
+
+    assert "today" in inspect.signature(
+        HagerFlowOfficialApi.async_get_forecast
+    ).parameters
+    source = inspect.getsource(sys.modules["hager_flow.coordinator"])
+    assert "dt_util.now().date()" in source, (
+        "the coordinator must derive the day from Home Assistant's timezone"
+    )
 
 
 def test_jwt_expiry():

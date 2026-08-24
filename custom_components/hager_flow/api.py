@@ -16,6 +16,7 @@ import base64
 import binascii
 import json
 import logging
+from datetime import date
 import time
 from typing import Any
 
@@ -207,7 +208,7 @@ class HagerFlowApi:
         """Return the normalised cumulative counters in kilowatt-hours."""
         return normalise_energy(await self.async_get_energy_registers())
 
-    async def async_get_forecast(self) -> dict[str, Any]:
+    async def async_get_forecast(self, today: date | None = None) -> dict[str, Any]:
         """There is no forecast on this route, so this is never called."""
         return {}
 

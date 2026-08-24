@@ -273,14 +273,20 @@ class HagerFlowOfficialApi:
         """Return the normalised cumulative counters in kilowatt-hours."""
         return normalise_energy(await self.async_get_energy_total())
 
-    async def async_get_forecast(self) -> dict[str, Any]:
+    async def async_get_forecast(self, today: date | None = None) -> dict[str, Any]:
         """Return the normalised forecast for today and tomorrow.
 
-        The two days are separate requests, and a missing tomorrow must not
-        cost us today — around midnight the backend has been seen to serve one
+        The caller passes the day, because "today" has to mean today in the
+        installation's timezone rather than in whichever one this process
+        happens to run in. Getting that wrong does not raise: the API would
+        refuse the day after tomorrow and serve tomorrow's numbers under
+        today's label.
+
+        The two days are separate requests, and a missing one must not cost us
+        the other — around midnight the backend has been seen to serve one
         before the other.
         """
-        today = date.today()
+        today = today or date.today()
         forecast: dict[str, Any] = {}
         for key, day in (
             ("pv_forecast_today", today),

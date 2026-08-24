@@ -16,6 +16,7 @@ from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .backend import FORECAST_KEYS
 from .coordinator import HagerFlowCoordinator
 from .entity import HagerFlowEntity
 
@@ -208,7 +209,7 @@ async def async_setup_entry(
 
     async_add_entities(
         HagerFlowForecastSensor(coordinator, description)
-        if description in FORECAST_SENSORS
+        if description.data_key in FORECAST_KEYS
         else HagerFlowSensor(coordinator, description)
         for description in POWER_SENSORS + ENERGY_SENSORS + FORECAST_SENSORS
         if description.data_key in provided

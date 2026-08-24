@@ -19,6 +19,7 @@ hold anything is worse than an absent one.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Protocol, runtime_checkable
 
 # Live readings, refreshed on every coordinator cycle.
@@ -91,8 +92,10 @@ class HagerFlowBackend(Protocol):
     async def async_get_energy(self) -> dict[str, Any]:
         """Return the normalised cumulative counters."""
 
-    async def async_get_forecast(self) -> dict[str, Any]:
-        """Return the normalised production forecast.
+    async def async_get_forecast(self, today: date | None = None) -> dict[str, Any]:
+        """Return the normalised production forecast for ``today`` and the day after.
 
-        Only called when the backend claims a key from :data:`FORECAST_KEYS`.
+        The day is passed in rather than derived, so it follows Home
+        Assistant's timezone instead of the process's. Only called when the
+        backend claims a key from :data:`FORECAST_KEYS`.
         """
