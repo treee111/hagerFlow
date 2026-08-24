@@ -25,23 +25,25 @@ and cumulative energy counters — the latter ready to use in the energy dashboa
 | Grid import / export energy | kWh | cumulative |
 | Battery charge / discharge energy | kWh | cumulative |
 | Online | — | connection to the cloud |
+| Solar forecast today / tomorrow | kWh | expected production, official API only |
 
-Three of those mean slightly different things depending on which backend is in use:
+Four of those differ depending on which backend is in use:
 
 | Entity | official API | flow portal |
 |---|---|---|
 | Solar power | installation total | sum of the three string registers |
 | Solar energy | gross DC yield, reported as such | the AC balance, derived — a few percent lower, and [here is why](#the-counters-are-ac-the-pv-power-register-is-dc) |
 | Inverter power | not registered | sum of the AC phase registers |
+| Solar forecast today / tomorrow | expected production in kWh | not registered |
 
 Both report solar *power* on the DC side, before the inverter; only the counter
 behind *Solar energy* differs.
 
-*Inverter power* is not merely unavailable on the official route — it is not created
-at all. Each backend declares what it can supply and the platforms register only
-that, because an entity that could never hold a value is worse than an absent one.
-The figure exists on that API's per-device measurements, which are a separate request
-this integration does not make.
+The last two are not merely unavailable on the route that lacks them — they are not
+created at all. Each backend declares what it can supply and the platforms register
+only that, because an entity that could never hold a value is worse than an absent
+one. Inverter power does exist on the official API's per-device measurements, which
+are a separate request this integration does not make.
 
 There are also unsigned power variants (charge power, discharge power, grid import,
 grid export), disabled by default — handy for automations without templates.
@@ -186,6 +188,26 @@ and what comes out is the AC balance, a few percent lower.
 There is no online flag on `energy/current`; the reading carries a timestamp that
 advances every 10 to 30 seconds, so a stale one is what marks the system offline.
 
+#### Production forecast
+
+```
+GET /v1/installations/{id}/forecast/production/{YYYY-MM-DD}
+```
+
+Served for **today and tomorrow only** — any other date is refused with *"must be
+either today or tomorrow"*. Hourly watt-hours, which the integration sums into the
+sensor value and carries along as an `hourly` attribute, so the profile can be
+charted without a second request. Polled hourly, and a failure is swallowed rather
+than raised: losing the forecast must not take the live readings down with it.
+
+The sensors deliberately have no state class. A forecast is not a measurement, and
+letting it into long-term statistics would file predicted kilowatt-hours next to
+metered ones.
+
+There is a consumption forecast at `forecast/consumption` as well, but it answered
+with an empty `values` list on the installation this was built against, so it is not
+wired up. An empty day is treated as no reading rather than as a confident zero.
+
 ### flow portal
 
 The flow portal is a frontend for the E3/DC cloud. The integration signs in with the
@@ -295,15 +317,14 @@ Only on the flow portal route:
 
 ## What the official API also offers
 
-Not read by this integration yet: hourly, daily,
-weekly, monthly and yearly energy history, per-device measurements including the
-inverter's AC output and per-string DC input, the PV configuration (installed
-capacity, feed-in limit) and both a production and a consumption forecast. Wallbox
-endpoints are announced but not live.
+Not read by this integration yet: hourly, daily, weekly, monthly and yearly energy
+history, per-device measurements including the inverter's AC output and per-string DC
+input, and the PV configuration (installed capacity, feed-in limit). Wallbox endpoints
+are announced but not live.
 
-The forecasts in particular would make good entities. They are left out for now to
-keep the first version of this backend to the same entity set the portal one
-produces.
+The per-device measurements are the interesting gap: they carry the AC output that
+would fill *Inverter power* on this route, and the per-string DC input the portal
+reports directly.
 
 ## Tests
 
