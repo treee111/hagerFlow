@@ -30,8 +30,11 @@ def _pv_energy(energy: dict[str, Any]) -> float | None:
     equals ``Consumption + NetIn - NetOut`` to the watt-hour, which is the
     energy balance with the battery left out — so the value keeps climbing
     overnight at roughly the house base load. Adding the battery registers back
-    restores the real production; cross-checked over a day against the
-    integrated live PV power, which it matches to within 0.2 %.
+    restores the real production.
+
+    Like every other counter this one is AC, while ``POWER_PV_S*`` is DC string
+    power, so integrating the live PV power over a day yields a few percent more
+    — that difference is the inverter, not an error. See the README.
     """
     try:
         derived = (
