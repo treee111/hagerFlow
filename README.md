@@ -13,12 +13,12 @@ and cumulative energy counters — the latter ready to use in the energy dashboa
 | Entity | Unit | Notes |
 |---|---|---|
 | Battery level | % | |
-| Solar power | W | sum of all strings |
-| House consumption | W | |
+| Solar power | W | sum of all strings, DC side |
+| House consumption | W | derived by the device, includes the inverter losses |
 | Battery power | W | positive = charging, negative = discharging |
 | Grid power | W | positive = import, negative = export |
 | Inverter power | W | disabled by default |
-| Solar energy | kWh | cumulative, `total_increasing` |
+| Solar energy | kWh | cumulative, `total_increasing`, AC side |
 | House energy | kWh | cumulative |
 | Grid import / export energy | kWh | cumulative |
 | Battery charge / discharge energy | kWh | cumulative |
@@ -105,8 +105,40 @@ comparing the result against the counter differences:
 `Production` satisfies `Consumption + NetIn - NetOut` to the watt-hour at every
 reading, which is why it keeps climbing overnight at roughly the house base load.
 The integration therefore derives the PV counter as
-`Production + BatPowerIn - BatPowerOut`; over a full day that matches the integrated
-live PV power to within 0.2 %. With those corrections the counter balance closes.
+`Production + BatPowerIn - BatPowerOut`.
+
+That derivation makes the PV counter the balancing term, so the counters adding up
+is true by construction and confirms nothing on its own. What pins the mapping down
+is the comparison against the live power integrated over whole days: grid export,
+grid import and both battery counters agree with it to well under one percent, and
+swapping `NetIn` and `NetOut` puts grid import and export off by an order of
+magnitude on a sunny day.
+
+### The counters are AC, the PV power register is DC
+
+The PV counter is the one place where that comparison does not land on the nose.
+Integrated over a full day, the live `POWER_PV_S*` sum comes out a few percent
+*above* the counter — consistently, and in the same proportion on days with very
+different yields. That is not an error in the derivation; the two simply live on
+opposite sides of the inverter:
+
+- `POWER_PV_S1..S3` are **DC** string powers.
+- Every cumulative counter, and therefore the derived PV counter as well, is **AC**.
+
+The cross-check: the AC energy implied by the counters (`Consumption - NetOut +
+NetIn`) matches the integrated `POWER_AC` register to about a percent, and dividing
+it by the DC energy that passed through the inverter gives a plausible conversion
+efficiency. The gap between the DC and the AC view is exactly that conversion loss.
+
+House consumption inherits the same offset, because the device does not meter it —
+it derives it as the residual of the live registers. That is why the live power
+balance closes to the watt while `POWER_C_L*` integrated over a day exceeds the
+`Consumption` counter by the *same absolute amount* that PV does. The live house
+figure carries the inverter losses; the counter does not.
+
+For the energy dashboard the AC basis is the right one, since every other counter is
+AC too. Just do not expect *Solar power* integrated over a day to equal *Solar
+energy* — the difference is the inverter, not a bug.
 
 ## Known limitations
 
@@ -123,6 +155,10 @@ live PV power to within 0.2 %. With those corrections the counter balance closes
 - **The counters lag real time** by up to about 17 minutes and only advance on a
   15-minute grid, so a short window compared against live power will not balance.
   Over a few hours it does.
+- **Power and energy are measured on different sides of the inverter.** Solar power
+  is DC, all energy counters are AC, and house power is a residual that includes the
+  conversion losses — see [above](#the-counters-are-ac-the-pv-power-register-is-dc).
+  Integrating a power entity will therefore not reproduce the matching counter.
 - **Do not derive counters from the `from` field** of `history-values/difference`.
   Its snapshots are unreliable — solar production appears to rise overnight. Only the
   `to` field is used, which is the current reading; Home Assistant computes the
