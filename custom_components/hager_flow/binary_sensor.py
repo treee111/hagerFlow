@@ -32,7 +32,7 @@ async def async_setup_entry(
 
 
 class HagerFlowOnlineSensor(HagerFlowEntity, BinarySensorEntity):
-    """Reports whether the installation is reporting to the portal."""
+    """Reports whether the installation is reaching the cloud."""
 
     @property
     def is_on(self) -> bool | None:

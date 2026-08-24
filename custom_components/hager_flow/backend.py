@@ -10,15 +10,16 @@ battery and importing from the grid. A value a backend cannot supply for one
 reading is ``None`` rather than zero, so an unavailable entity never
 masquerades as a real reading of nought.
 
-The two do not cover the same ground, though, and a value one of them can
-never supply is a different matter from one that happens to be missing right
-now. Each declares what it covers in :attr:`HagerFlowBackend.provided_keys`
-and the platforms register only those entities, because an entity that could
-never hold anything is worse than an absent one.
+Neither backend covers the whole vocabulary, and they miss different parts of
+it: the portal has no forecast, the official API reports no inverter output.
+Each declares what it can supply in :attr:`HagerFlowBackend.provided_keys` and
+the platforms register only those entities, because an entity that could never
+hold anything is worse than an absent one.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Protocol, runtime_checkable
 
 # Live readings, refreshed on every coordinator cycle.
@@ -50,7 +51,12 @@ ENERGY_KEYS = frozenset(
     }
 )
 
-ALL_KEYS = LIVE_KEYS | ENERGY_KEYS
+# Expected production in kilowatt-hours. Each total carries the hourly profile
+# it was summed from as ``<key>_hourly``, a list of
+# ``{"start": iso8601, "pv_production": kWh}``.
+FORECAST_KEYS = frozenset({"pv_forecast_today", "pv_forecast_tomorrow"})
+
+ALL_KEYS = LIVE_KEYS | ENERGY_KEYS | FORECAST_KEYS
 
 
 class HagerFlowError(Exception):
@@ -85,3 +91,11 @@ class HagerFlowBackend(Protocol):
 
     async def async_get_energy(self) -> dict[str, Any]:
         """Return the normalised cumulative counters."""
+
+    async def async_get_forecast(self, today: date | None = None) -> dict[str, Any]:
+        """Return the normalised production forecast for ``today`` and the day after.
+
+        The day is passed in rather than derived, so it follows Home
+        Assistant's timezone instead of the process's. Only called when the
+        backend claims a key from :data:`FORECAST_KEYS`.
+        """

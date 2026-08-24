@@ -116,6 +116,12 @@
       },
       "battery_discharge_energy": {
         "name": "Batterie Entladeenergie"
+      },
+      "pv_forecast_today": {
+        "name": "PV-Prognose heute"
+      },
+      "pv_forecast_tomorrow": {
+        "name": "PV-Prognose morgen"
       }
     },
     "binary_sensor": {
