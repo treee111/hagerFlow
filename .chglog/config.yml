@@ -1,0 +1,56 @@
+# git-chglog configuration.
+#
+#   brew install git-chglog
+#
+# Regenerate the changelog while preparing a release, before tagging:
+#
+#   git-chglog --config .chglog/config.yml --next-tag vX.Y.Z -o CHANGELOG.md
+#
+# and render the notes for the GitHub release itself:
+#
+#   git-chglog --config .chglog/release-config.yml --next-tag vX.Y.Z vX.Y.Z
+#
+style: github
+template: CHANGELOG.tpl.md
+info:
+  title: CHANGELOG
+  repository_url: https://github.com/treee111/hagerFlow
+options:
+  tag_filter_pattern: "^v"
+  sort: "semver"
+  commits:
+    sort_by: "Author.Date"
+    filters:
+      Type:
+        - FEAT
+        - FIX
+        - DEV
+        - DOC
+        - BREAKING
+  commit_groups:
+    sort_by: Custom
+    title_order:
+      - BREAKING
+      - FEAT
+      - FIX
+      - DEV
+      - DOC
+    title_maps:
+      FEAT: Features
+      FIX: Bug Fixes
+      DEV: Development/Infrastructure/Test/CI
+      DOC: Documentation
+      BREAKING: Breaking Changes
+  header:
+    # "[TYPE] scope: subject", with the scope optional.
+    pattern: "^\\[(\\w*)\\]\\s(?:([^\\:]*)\\:\\s)?(.*)$"
+    pattern_maps:
+      - Type
+      - Scope
+      - Subject
+  issues:
+    prefix:
+      - "#"
+  notes:
+    keywords:
+      - BREAKING CHANGE
