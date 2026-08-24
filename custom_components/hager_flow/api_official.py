@@ -15,13 +15,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
 
-from .api import (
-    REQUEST_TIMEOUT,
-    TOKEN_REFRESH_MARGIN,
+from .api import REQUEST_TIMEOUT, TOKEN_REFRESH_MARGIN
+from .backend import (
     HagerFlowAuthError,
     HagerFlowConnectionError,
     HagerFlowError,
@@ -34,6 +34,9 @@ _LOGGER = logging.getLogger(__name__)
 # client credentials flow has no refresh token, so an expired token is simply
 # requested again with the same call.
 DEFAULT_TOKEN_LIFETIME = 300
+
+# How stale a live reading may be before the installation counts as offline.
+STALE_AFTER = timedelta(minutes=10)
 
 
 class HagerFlowOfficialApi:
@@ -63,6 +66,11 @@ class HagerFlowOfficialApi:
     def installation_id(self) -> str | None:
         """Installation the client is bound to, once it is known."""
         return self._installation_id
+
+    @property
+    def device_key(self) -> str:
+        """Stable identifier for this installation."""
+        return self._require_installation()
 
     async def _async_token(self, force_refresh: bool = False) -> str:
         """Return a valid access token, requesting a new one when necessary."""
@@ -211,6 +219,127 @@ class HagerFlowOfficialApi:
             f"/installations/{self._require_installation()}/pv-configuration"
         )
         return data if isinstance(data, dict) else {}
+
+
+    async def async_get_device_info(self) -> dict[str, Any]:
+        """Return static metadata, merging the installation and its hardware."""
+        info = dict(await self.async_get_installation())
+        try:
+            devices = await self._async_get(
+                f"/installations/{self._require_installation()}/devices"
+            )
+        except HagerFlowError:
+            # Master data is enough to set the device up; hardware detail is a
+            # bonus and must not keep the integration from starting.
+            _LOGGER.debug("Could not read device list", exc_info=True)
+            return info
+
+        if isinstance(devices, list):
+            # A farm can hold several storage devices; the first one carries the
+            # serial and product name shown on the device page.
+            primary = next((d for d in devices if isinstance(d, dict)), None)
+            if primary:
+                info["device"] = primary
+        return info
+
+    async def async_get_live(self) -> dict[str, Any]:
+        """Return the normalised live values."""
+        return normalise_live(await self.async_get_energy_current())
+
+    async def async_get_energy(self) -> dict[str, Any]:
+        """Return the normalised cumulative counters in kilowatt-hours."""
+        return normalise_energy(await self.async_get_energy_total())
+
+
+def _int(value: Any) -> int | None:
+    """Return an integer register value, or None when it is absent."""
+    if value is None:
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _kwh(value: Any) -> float | None:
+    """Convert a watt-hour counter to kilowatt-hours."""
+    if value is None:
+        return None
+    try:
+        return round(float(value) / 1000, 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_fresh(timestamp: Any) -> bool:
+    """Return whether a reading is recent enough to call the system online.
+
+    ``energy/current`` advances every 10 to 30 seconds while the installation
+    is connected, so a reading several minutes old means the cloud has lost
+    contact with it. There is no explicit online flag on this endpoint.
+    """
+    if not isinstance(timestamp, str):
+        return False
+    try:
+        taken = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return False
+    if taken.tzinfo is None:
+        taken = taken.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - taken < STALE_AFTER
+
+
+def normalise_live(current: dict[str, Any]) -> dict[str, Any]:
+    """Turn an ``energy/current`` payload into the shared vocabulary.
+
+    Sign conventions match the shared contract as they stand: ``gridPower`` is
+    negative while exporting, and ``batteryChargePower`` is negative while the
+    battery is discharging.
+    """
+    battery = _int(current.get("batteryChargePower"))
+    grid = _int(current.get("gridPower"))
+
+    return {
+        "soc": _int(current.get("batteryStateOfCharge")),
+        "pv_power": _int(current.get("pvProduction")),
+        "house_power": _int(current.get("consumption")),
+        # The installation-level endpoint reports no inverter output; that
+        # lives on the device measurements, which this client does not poll.
+        "inverter_power": None,
+        "battery_power": battery,
+        "battery_charge_power": max(battery, 0) if battery is not None else None,
+        "battery_discharge_power": max(-battery, 0) if battery is not None else None,
+        "grid_power": grid,
+        "grid_import_power": max(grid, 0) if grid is not None else None,
+        "grid_export_power": max(-grid, 0) if grid is not None else None,
+        "online": _is_fresh(current.get("time")),
+    }
+
+
+def normalise_energy(total: dict[str, Any]) -> dict[str, Any]:
+    """Turn an ``energy/total`` payload into kilowatt-hours.
+
+    Unlike the portal backend nothing has to be derived here: the API names
+    every counter for what it is, and ``pvProduction`` is the gross DC yield
+    rather than the AC balance the portal registers add up to.
+    """
+    totals = total.get("totals")
+    if not isinstance(totals, dict):
+        # Older payloads only carry the per-period rows; the last one is the
+        # running total when the resolution spans the whole period.
+        values = total.get("values")
+        totals = values[-1] if isinstance(values, list) and values else {}
+    if not isinstance(totals, dict):
+        totals = {}
+
+    return {
+        "pv_energy": _kwh(totals.get("pvProduction")),
+        "house_energy": _kwh(totals.get("consumption")),
+        "grid_import_energy": _kwh(totals.get("gridConsumption")),
+        "grid_export_energy": _kwh(totals.get("gridFeedIn")),
+        "battery_charge_energy": _kwh(totals.get("batteryCharge")),
+        "battery_discharge_energy": _kwh(totals.get("batteryDischarge")),
+    }
 
 
 def _unwrap(payload: Any, path: str) -> Any:

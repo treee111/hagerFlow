@@ -64,7 +64,7 @@ package = types.ModuleType("hager_flow")
 package.__path__ = [str(COMPONENT)]
 sys.modules["hager_flow"] = package
 
-for name in ("const", "api", "coordinator"):
+for name in ("const", "backend", "api", "api_official", "coordinator"):
     spec = importlib.util.spec_from_file_location(
         f"hager_flow.{name}", COMPONENT / f"{name}.py"
     )
@@ -72,10 +72,13 @@ for name in ("const", "api", "coordinator"):
     sys.modules[f"hager_flow.{name}"] = module
     spec.loader.exec_module(module)
 
-from hager_flow.api import _jwt_expiry  # noqa: E402
-from hager_flow.coordinator import HagerFlowCoordinator  # noqa: E402
+from hager_flow import api_official  # noqa: E402
+from hager_flow.api import _jwt_expiry, normalise_energy, normalise_live  # noqa: E402
 
-parse = HagerFlowCoordinator._parse
+
+def parse(raw, energy):
+    """Merge both halves the way the coordinator does."""
+    return {**normalise_live(raw), **normalise_energy(energy)}
 
 # Synthetic daytime reading: 3000 W from the panels, 1200 W charging the
 # battery, 1200 W used by the house and the remaining 600 W exported.
@@ -210,6 +213,103 @@ def test_missing_registers_do_not_crash():
     out = parse({"offlineLevel": 1, "POWER_BAT_1": None}, {})
     assert out["battery_power"] == 0
     assert out["online"] is False
+
+
+# --- the official API -----------------------------------------------------
+#
+# Synthetic payloads shaped like the real ones. Live values are watts, counters
+# watt-hours, and every register is named for what it is — in particular
+# ``pvProduction`` is the gross DC yield, not the AC balance the portal
+# registers add up to.
+CURRENT = {
+    "time": "2099-01-01T12:00:00.000+01:00",
+    "pvProduction": 3000,
+    "production": 3000,
+    "gridPower": -600,
+    "consumption": 1200,
+    "batteryChargePower": 1200,
+    "batteryStateOfCharge": 55,
+}
+
+TOTAL = {
+    "resolution": "yearly",
+    "values": [{"pvProduction": 1, "consumption": 1}],
+    "totals": {
+        "pvProduction": 1000000,
+        "production": 1000000,
+        "gridFeedIn": 400000,
+        "gridConsumption": 250000,
+        "consumption": 800000,
+        "batteryCharge": 300000,
+        "batteryDischarge": 275500,
+    },
+}
+
+
+def test_official_live_values_match_the_shared_vocabulary():
+    """The same reading normalises to the same keys as the portal backend."""
+    out = api_official.normalise_live(CURRENT)
+    assert out["soc"] == 55
+    assert out["pv_power"] == 3000
+    assert out["house_power"] == 1200
+    assert out["battery_power"] == 1200
+    assert out["battery_charge_power"] == 1200
+    assert out["battery_discharge_power"] == 0
+    # gridPower is negative while exporting, same as the portal convention.
+    assert out["grid_power"] == -600
+    assert out["grid_export_power"] == 600
+    assert out["grid_import_power"] == 0
+    assert set(out) == set(parse(RAW, ENERGY)) - set(normalise_energy(ENERGY))
+
+
+def test_official_live_values_while_discharging():
+    """A negative charge power is a discharge, not a negative charge."""
+    out = api_official.normalise_live({**CURRENT, "batteryChargePower": -300})
+    assert out["battery_power"] == -300
+    assert out["battery_discharge_power"] == 300
+    assert out["battery_charge_power"] == 0
+
+
+def test_official_online_follows_the_reading_age():
+    """There is no online flag, so a stale reading is what marks it offline."""
+    assert api_official.normalise_live(CURRENT)["online"] is True
+    assert api_official.normalise_live(
+        {**CURRENT, "time": "2000-01-01T12:00:00.000+01:00"}
+    )["online"] is False
+    assert api_official.normalise_live({**CURRENT, "time": None})["online"] is False
+
+
+def test_official_pv_counter_is_reported_not_derived():
+    """pvProduction is read straight through — no balancing term involved."""
+    out = api_official.normalise_energy(TOTAL)
+    assert out["pv_energy"] == 1000.0
+    assert out["grid_export_energy"] == 400.0
+    assert out["grid_import_energy"] == 250.0
+    assert out["house_energy"] == 800.0
+    assert out["battery_charge_energy"] == 300.0
+    assert out["battery_discharge_energy"] == 275.5
+
+    # The gross DC yield sits above the AC balance; that gap is the inverter,
+    # and reading pvProduction directly is what avoids having to model it.
+    balance = (
+        out["house_energy"]
+        + out["grid_export_energy"]
+        - out["grid_import_energy"]
+        + out["battery_charge_energy"]
+        - out["battery_discharge_energy"]
+    )
+    assert out["pv_energy"] > balance
+
+
+def test_official_counters_cover_the_same_keys_as_the_portal():
+    """Neither backend may expose a counter the other one lacks."""
+    assert set(api_official.normalise_energy(TOTAL)) == set(normalise_energy(ENERGY))
+
+
+def test_official_missing_payload_yields_none():
+    """An empty payload leaves every counter unknown rather than zero."""
+    out = api_official.normalise_energy({})
+    assert set(out.values()) == {None}
 
 
 def test_jwt_expiry():

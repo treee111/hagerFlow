@@ -18,18 +18,26 @@ CONF_CLIENT_ID = "client_id"
 CONF_CLIENT_SECRET = "client_secret"
 CONF_INSTALLATION_ID = "installation_id"
 
+# Which backend an entry talks to. Entries created before the official API was
+# supported carry no such key, so its absence means the portal.
+CONF_BACKEND = "backend"
+BACKEND_PORTAL = "portal"
+BACKEND_OFFICIAL = "official"
+
 # Shown to the user in the config flow; translation strings must not
 # contain URLs themselves, so it is passed in as a placeholder.
 PORTAL_URL = "https://flow.hager.com"
+DEVELOPER_PORTAL_URL = "https://developer.hagerenergy.com"
 
 CONF_REAUTH_TOKEN = "reauth_token"
 CONF_SERIAL = "serial"
 
-# Live values update every few seconds on the portal side.
+# Both backends refresh their live values every few seconds.
 UPDATE_INTERVAL = timedelta(seconds=30)
 
-# Energy counters only advance on a 15 minute grid, so polling them on every
-# cycle would be wasted requests.
+# The cumulative counters advance on a 15 minute grid on either backend and lag
+# real time by about 17 minutes, so polling them on every cycle would only
+# repeat the same numbers.
 ENERGY_UPDATE_INTERVAL = timedelta(minutes=5)
 
 MANUFACTURER = "Hager Energy GmbH"

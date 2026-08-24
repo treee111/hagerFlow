@@ -8,9 +8,26 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import HagerFlowConfigEntry
-from .const import CONF_REAUTH_TOKEN
+from .const import CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_REAUTH_TOKEN
 
-TO_REDACT = {CONF_REAUTH_TOKEN, "ownerID", "installerID", "Anschrift_ID", "IP"}
+# Credentials, plus everything that identifies the installation or its owner.
+# Diagnostics end up attached to bug reports, and the official backend returns
+# the owner's name in the installation title and a full postal address with it.
+TO_REDACT = {
+    CONF_CLIENT_ID,
+    CONF_CLIENT_SECRET,
+    CONF_REAUTH_TOKEN,
+    "Anschrift_ID",
+    "IP",
+    "address",
+    "installerID",
+    "latitude",
+    "longitude",
+    "name",
+    "ownerID",
+    "ownerId",
+    "serialNumber",
+}
 
 
 async def async_get_config_entry_diagnostics(

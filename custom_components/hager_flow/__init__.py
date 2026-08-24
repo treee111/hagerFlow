@@ -8,7 +8,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import HagerFlowApi
-from .const import CONF_REAUTH_TOKEN, CONF_SERIAL
+from .api_official import HagerFlowOfficialApi
+from .backend import HagerFlowBackend
+from .const import (
+    BACKEND_OFFICIAL,
+    CONF_BACKEND,
+    CONF_CLIENT_ID,
+    CONF_CLIENT_SECRET,
+    CONF_INSTALLATION_ID,
+    CONF_REAUTH_TOKEN,
+    CONF_SERIAL,
+)
 from .coordinator import HagerFlowCoordinator
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
@@ -16,15 +26,29 @@ PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 type HagerFlowConfigEntry = ConfigEntry[HagerFlowCoordinator]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: HagerFlowConfigEntry) -> bool:
-    """Set up Hager flow from a config entry."""
-    api = HagerFlowApi(
-        async_get_clientsession(hass),
+def _build_api(hass: HomeAssistant, entry: HagerFlowConfigEntry) -> HagerFlowBackend:
+    """Return the backend this entry was configured for."""
+    session = async_get_clientsession(hass)
+
+    if entry.data.get(CONF_BACKEND) == BACKEND_OFFICIAL:
+        return HagerFlowOfficialApi(
+            session,
+            entry.data[CONF_CLIENT_ID],
+            entry.data[CONF_CLIENT_SECRET],
+            entry.data[CONF_INSTALLATION_ID],
+        )
+
+    # Entries created before the official API was supported have no backend key.
+    return HagerFlowApi(
+        session,
         entry.data[CONF_REAUTH_TOKEN],
         entry.data[CONF_SERIAL],
     )
 
-    coordinator = HagerFlowCoordinator(hass, entry, api)
+
+async def async_setup_entry(hass: HomeAssistant, entry: HagerFlowConfigEntry) -> bool:
+    """Set up Hager flow from a config entry."""
+    coordinator = HagerFlowCoordinator(hass, entry, _build_api(hass, entry))
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
