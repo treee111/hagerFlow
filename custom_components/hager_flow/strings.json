@@ -116,6 +116,12 @@
       },
       "battery_discharge_energy": {
         "name": "Battery discharge energy"
+      },
+      "pv_forecast_today": {
+        "name": "Solar forecast today"
+      },
+      "pv_forecast_tomorrow": {
+        "name": "Solar forecast tomorrow"
       }
     },
     "binary_sensor": {

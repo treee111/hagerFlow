@@ -94,7 +94,7 @@ class HagerFlowApi:
 
     @property
     def provided_keys(self) -> frozenset[str]:
-        """Everything in the vocabulary; this backend reports all of it."""
+        """Everything but the forecast, which the portal does not expose."""
         return LIVE_KEYS | ENERGY_KEYS
 
     async def _async_token(self, force_refresh: bool = False) -> str:
@@ -206,6 +206,10 @@ class HagerFlowApi:
     async def async_get_energy(self) -> dict[str, Any]:
         """Return the normalised cumulative counters in kilowatt-hours."""
         return normalise_energy(await self.async_get_energy_registers())
+
+    async def async_get_forecast(self) -> dict[str, Any]:
+        """There is no forecast on this route, so this is never called."""
+        return {}
 
 
 def _phase_sum(raw: dict[str, Any], prefix: str, count: int = 3) -> int:

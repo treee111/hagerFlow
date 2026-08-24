@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -23,6 +23,7 @@ import aiohttp
 from .api import REQUEST_TIMEOUT, TOKEN_REFRESH_MARGIN
 from .backend import (
     ENERGY_KEYS,
+    FORECAST_KEYS,
     LIVE_KEYS,
     HagerFlowAuthError,
     HagerFlowConnectionError,
@@ -81,7 +82,7 @@ class HagerFlowOfficialApi:
         ``energy/current`` carries no AC output figure. It exists on the device
         measurements, which are a separate request this client does not make.
         """
-        return (LIVE_KEYS - {"inverter_power"}) | ENERGY_KEYS
+        return (LIVE_KEYS - {"inverter_power"}) | ENERGY_KEYS | FORECAST_KEYS
 
     async def _async_token(self, force_refresh: bool = False) -> str:
         """Return a valid access token, requesting a new one when necessary."""
@@ -224,6 +225,17 @@ class HagerFlowOfficialApi:
         )
         return data if isinstance(data, dict) else {}
 
+    async def async_get_production_forecast(self, day: str) -> dict[str, Any]:
+        """Return the hourly production forecast for one day.
+
+        The backend only serves today and tomorrow; anything else is refused
+        with ``must be either today or tomorrow``.
+        """
+        data = await self._async_get(
+            f"/installations/{self._require_installation()}/forecast/production/{day}"
+        )
+        return data if isinstance(data, dict) else {}
+
     async def async_get_pv_configuration(self) -> dict[str, Any]:
         """Return the photovoltaic configuration (string layout, peak power)."""
         data = await self._async_get(
@@ -260,6 +272,27 @@ class HagerFlowOfficialApi:
     async def async_get_energy(self) -> dict[str, Any]:
         """Return the normalised cumulative counters in kilowatt-hours."""
         return normalise_energy(await self.async_get_energy_total())
+
+    async def async_get_forecast(self) -> dict[str, Any]:
+        """Return the normalised forecast for today and tomorrow.
+
+        The two days are separate requests, and a missing tomorrow must not
+        cost us today — around midnight the backend has been seen to serve one
+        before the other.
+        """
+        today = date.today()
+        forecast: dict[str, Any] = {}
+        for key, day in (
+            ("pv_forecast_today", today),
+            ("pv_forecast_tomorrow", today + timedelta(days=1)),
+        ):
+            try:
+                payload = await self.async_get_production_forecast(day.isoformat())
+            except HagerFlowError:
+                _LOGGER.debug("No forecast for %s", day, exc_info=True)
+                continue
+            forecast.update(normalise_forecast_day(payload, key))
+        return forecast
 
 
 def _int(value: Any) -> int | None:
@@ -351,6 +384,34 @@ def normalise_energy(total: dict[str, Any]) -> dict[str, Any]:
         "battery_charge_energy": _kwh(totals.get("batteryCharge")),
         "battery_discharge_energy": _kwh(totals.get("batteryDischarge")),
     }
+
+
+def normalise_forecast_day(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    """Turn one forecast payload into a total and the profile behind it.
+
+    The backend reports the day as hourly watt-hours. The total is what the
+    sensor shows; the hourly profile rides along as an attribute so it can be
+    charted without a second request.
+    """
+    values = payload.get("values")
+    if not isinstance(values, list) or not values:
+        return {}
+
+    hourly: list[dict[str, Any]] = []
+    total = 0.0
+    for row in values:
+        if not isinstance(row, dict):
+            continue
+        production = _kwh(row.get("pvProduction"))
+        start = row.get("startPeriod")
+        if production is None or not isinstance(start, str):
+            continue
+        total += production
+        hourly.append({"start": start, "pv_production": production})
+
+    if not hourly:
+        return {}
+    return {key: round(total, 3), f"{key}_hourly": hourly}
 
 
 def _unwrap(payload: Any, path: str) -> Any:

@@ -40,4 +40,9 @@ UPDATE_INTERVAL = timedelta(seconds=30)
 # repeat the same numbers.
 ENERGY_UPDATE_INTERVAL = timedelta(minutes=5)
 
+# The production forecast is a day-ahead model output. It is refreshed during
+# the day as the weather firms up, but nowhere near often enough to warrant
+# more than an hourly poll.
+FORECAST_UPDATE_INTERVAL = timedelta(hours=1)
+
 MANUFACTURER = "Hager Energy GmbH"

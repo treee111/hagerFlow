@@ -357,21 +357,62 @@ def test_official_missing_payload_yields_none():
     assert set(out.values()) == {None}
 
 
-def test_backends_declare_what_they_can_supply():
-    """Neither backend may claim a key it cannot fill, or omit one it can.
+# One day of the production forecast, shaped like the real payload: hourly
+# watt-hours, zero overnight.
+FORECAST_DAY = {
+    "day": "2099-06-21",
+    "resolution": "hourly",
+    "values": (
+        [{"startPeriod": f"2099-06-21T{h:02d}:00:00.000+02:00", "pvProduction": 0}
+         for h in range(6)]
+        + [{"startPeriod": "2099-06-21T06:00:00.000+02:00", "pvProduction": 1200},
+           {"startPeriod": "2099-06-21T07:00:00.000+02:00", "pvProduction": 3400},
+           {"startPeriod": "2099-06-21T08:00:00.000+02:00", "pvProduction": 5150}]
+    ),
+}
 
-    The official API reports no inverter output on the installation-level
-    endpoint, so that sensor must not be registered on this route — an entity
-    that could only ever be unknown is worse than an absent one.
+
+def test_forecast_totals_the_hourly_values():
+    """The sensor value is the day's sum; the profile rides along."""
+    out = api_official.normalise_forecast_day(FORECAST_DAY, "pv_forecast_today")
+    assert out["pv_forecast_today"] == 9.75
+    assert len(out["pv_forecast_today_hourly"]) == 9
+    assert out["pv_forecast_today_hourly"][6] == {
+        "start": "2099-06-21T06:00:00.000+02:00",
+        "pv_production": 1.2,
+    }
+    assert sum(h["pv_production"] for h in out["pv_forecast_today_hourly"]) == 9.75
+
+
+def test_forecast_without_values_yields_nothing():
+    """An empty day must not surface as a forecast of zero.
+
+    The consumption forecast answers exactly like this on installations it has
+    no model for, and a confident 0 kWh would be worse than no reading.
     """
+    assert api_official.normalise_forecast_day({}, "pv_forecast_today") == {}
+    assert api_official.normalise_forecast_day(
+        {"values": []}, "pv_forecast_today"
+    ) == {}
+    assert api_official.normalise_forecast_day(
+        {"values": [{"startPeriod": "x"}, {"pvProduction": 5}]}, "pv_forecast_today"
+    ) == {}
+
+
+def test_backends_declare_what_they_can_supply():
+    """Neither backend may claim a key it cannot fill, or omit one it can."""
     from hager_flow.api import HagerFlowApi
     from hager_flow.api_official import HagerFlowOfficialApi
-    from hager_flow.backend import ALL_KEYS
+    from hager_flow.backend import ALL_KEYS, FORECAST_KEYS
 
     portal = HagerFlowApi.provided_keys.fget(None)
     official = HagerFlowOfficialApi.provided_keys.fget(None)
 
     assert portal <= ALL_KEYS and official <= ALL_KEYS
+    # The portal has no forecast endpoint; the official API reports no inverter
+    # output on the installation-level endpoint.
+    assert not (portal & FORECAST_KEYS)
+    assert FORECAST_KEYS <= official
     assert "inverter_power" in portal
     assert "inverter_power" not in official
 
@@ -415,7 +456,9 @@ def test_platform_registers_only_what_the_backend_supplies():
     assert "inverter_power" not in official, (
         "the official route must not register a sensor it can never fill"
     )
-    assert official == portal - {"inverter_power"}
+    # The forecast runs the other way: only the official route registers it.
+    assert {"pv_forecast_today", "pv_forecast_tomorrow"} <= official
+    assert not {"pv_forecast_today", "pv_forecast_tomorrow"} & portal
 
 
 def test_jwt_expiry():

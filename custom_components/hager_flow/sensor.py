@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -173,18 +174,43 @@ ENERGY_SENSORS: tuple[HagerFlowSensorDescription, ...] = (
     ),
 )
 
+# Expected production. Deliberately without a state class: a forecast is not a
+# measurement, and letting it into long-term statistics would put predicted
+# kilowatt-hours next to metered ones.
+FORECAST_SENSORS: tuple[HagerFlowSensorDescription, ...] = (
+    HagerFlowSensorDescription(
+        key="pv_forecast_today",
+        data_key="pv_forecast_today",
+        translation_key="pv_forecast_today",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        suggested_display_precision=1,
+    ),
+    HagerFlowSensorDescription(
+        key="pv_forecast_tomorrow",
+        data_key="pv_forecast_tomorrow",
+        translation_key="pv_forecast_tomorrow",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        suggested_display_precision=1,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensors the configured backend can actually supply."""
+    """Set up the Hager flow sensors the configured backend can supply."""
     coordinator: HagerFlowCoordinator = entry.runtime_data
     provided = coordinator.api.provided_keys
+
     async_add_entities(
-        HagerFlowSensor(coordinator, description)
-        for description in POWER_SENSORS + ENERGY_SENSORS
+        HagerFlowForecastSensor(coordinator, description)
+        if description in FORECAST_SENSORS
+        else HagerFlowSensor(coordinator, description)
+        for description in POWER_SENSORS + ENERGY_SENSORS + FORECAST_SENSORS
         if description.data_key in provided
     )
 
@@ -205,3 +231,15 @@ class HagerFlowSensor(HagerFlowEntity, SensorEntity):
     def available(self) -> bool:
         """Energy counters stay unavailable until the first energy poll."""
         return super().available and self.native_value is not None
+
+
+class HagerFlowForecastSensor(HagerFlowSensor):
+    """A daily production forecast, carrying the hourly profile behind it."""
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the hourly profile, so it can be charted without a request."""
+        if not self.coordinator.data:
+            return None
+        hourly = self.coordinator.data.get(f"{self.entity_description.data_key}_hourly")
+        return {"hourly": hourly} if hourly else None
