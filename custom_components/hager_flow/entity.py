@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER
+from .const import DOMAIN, MANUFACTURER, PORTAL_URL
 from .coordinator import HagerFlowCoordinator
 
 
@@ -22,18 +22,21 @@ class HagerFlowEntity(CoordinatorEntity[HagerFlowCoordinator]):
         super().__init__(coordinator)
         self.entity_description = description
 
-        serial = coordinator.api.serial
+        key = coordinator.api.device_key
         raw = coordinator.device_info_raw
+        # The official backend nests the hardware under "device"; the portal
+        # backend reports it flat. Either may be missing entirely.
+        hardware = raw.get("device") if isinstance(raw.get("device"), dict) else {}
 
-        self._attr_unique_id = f"{serial}_{description.key}"
+        self._attr_unique_id = f"{key}_{description.key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, serial)},
+            identifiers={(DOMAIN, key)},
             name="Hager flow",
             manufacturer=MANUFACTURER,
-            model=raw.get("product") or "flow",
+            model=raw.get("product") or hardware.get("productName") or "flow",
             sw_version=raw.get("sw_release"),
-            serial_number=serial,
-            configuration_url="https://flow.hager.com",
+            serial_number=raw.get("serial") or hardware.get("serialNumber") or key,
+            configuration_url=PORTAL_URL,
         )
 
     @property

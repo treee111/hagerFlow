@@ -3,6 +3,32 @@
     "step": {
       "user": {
         "title": "Hager flow verbinden",
+        "description": "Wähle, worüber die Anlage erreicht werden soll.",
+        "menu_options": {
+          "official": "Offizielle API (empfohlen)",
+          "portal": "flow-Portal (ohne API-Zugang)"
+        }
+      },
+      "official": {
+        "title": "Offizielle Hager-Energy-API",
+        "description": "Einen OAuth-Client unter {developer_portal_url} anfordern. Client-ID und Secret laufen nicht ab, dieser Weg muss also anders als das Portal nicht regelmäßig erneuert werden.",
+        "data": {
+          "client_id": "Client-ID",
+          "client_secret": "Client-Secret"
+        },
+        "data_description": {
+          "client_secret": "Wird wie ein Passwort behandelt und mit dem Eintrag gespeichert."
+        }
+      },
+      "installation": {
+        "title": "Anlage auswählen",
+        "description": "Diese Zugangsdaten haben Zugriff auf mehrere Anlagen.",
+        "data": {
+          "installation_id": "Anlage"
+        }
+      },
+      "portal": {
+        "title": "Hager flow verbinden",
         "description": "Auf {portal_url} anmelden, dann die Entwicklertools (F12) öffnen und unter Application → Local Storage den Wert von `reAuthToken` kopieren.\n\nDie Seriennummer steht in der Titelzeile des Portals und in dessen URL.",
         "data": {
           "serial": "Seriennummer",
@@ -11,6 +37,14 @@
         "data_description": {
           "serial": "Die zwölfstellige Zahl aus dem Portal",
           "reauth_token": "Etwa 30 Tage gültig. Home Assistant fragt nach Ablauf automatisch nach einem neuen."
+        }
+      },
+      "reauth_official": {
+        "title": "Hager flow neu anmelden",
+        "description": "Die Zugangsdaten für Anlage {installation_id} wurden abgelehnt. Unter {developer_portal_url} einen neuen OAuth-Client anlegen und hier eintragen.",
+        "data": {
+          "client_id": "Client-ID",
+          "client_secret": "Client-Secret"
         }
       },
       "reauth_confirm": {
@@ -22,10 +56,11 @@
       }
     },
     "error": {
-      "cannot_connect": "Verbindung zum Hager-flow-Portal fehlgeschlagen.",
-      "invalid_auth": "Das Refresh-Token wurde abgelehnt. Bitte ein aktuelles aus dem Portal kopieren.",
+      "cannot_connect": "Verbindung zur Hager-Energy-Cloud fehlgeschlagen.",
+      "invalid_auth": "Die Zugangsdaten wurden abgelehnt. Bitte aktuelle eintragen.",
       "unknown_serial": "Keine Anlage mit dieser Seriennummer gefunden.",
-      "unknown": "Unerwarteter Fehler"
+      "unknown": "Unerwarteter Fehler",
+      "no_installations": "Diese Zugangsdaten haben Zugriff auf keine Anlage."
     },
     "abort": {
       "already_configured": "Diese Anlage ist bereits eingerichtet.",

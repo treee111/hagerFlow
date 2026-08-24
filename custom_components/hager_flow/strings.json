@@ -3,6 +3,32 @@
     "step": {
       "user": {
         "title": "Connect Hager flow",
+        "description": "Choose how to reach the installation.",
+        "menu_options": {
+          "official": "Official API (recommended)",
+          "portal": "flow portal (no API access needed)"
+        }
+      },
+      "official": {
+        "title": "Official Hager Energy API",
+        "description": "Request an OAuth client at {developer_portal_url}. Client ID and secret do not expire, so unlike the portal route this needs no periodic renewal.",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client secret"
+        },
+        "data_description": {
+          "client_secret": "Treated like a password and stored with the config entry."
+        }
+      },
+      "installation": {
+        "title": "Choose installation",
+        "description": "These credentials have access to more than one installation.",
+        "data": {
+          "installation_id": "Installation"
+        }
+      },
+      "portal": {
+        "title": "Connect Hager flow",
         "description": "Sign in at {portal_url}, then open the browser developer tools (F12) and copy the value of `reAuthToken` from Application → Local Storage.\n\nThe serial number is shown in the portal title bar and in its URL.",
         "data": {
           "serial": "Serial number",
@@ -11,6 +37,14 @@
         "data_description": {
           "serial": "The 12-digit number shown in the portal",
           "reauth_token": "Valid for about 30 days. Home Assistant will ask for a new one when it expires."
+        }
+      },
+      "reauth_official": {
+        "title": "Re-authenticate Hager flow",
+        "description": "The client credentials for installation {installation_id} were rejected. Create a new OAuth client at {developer_portal_url} and enter it here.",
+        "data": {
+          "client_id": "Client ID",
+          "client_secret": "Client secret"
         }
       },
       "reauth_confirm": {
@@ -22,10 +56,11 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the Hager flow portal.",
-      "invalid_auth": "The refresh token was rejected. Please copy a current one from the portal.",
+      "cannot_connect": "Failed to connect to the Hager Energy cloud.",
+      "invalid_auth": "The credentials were rejected. Please supply current ones.",
       "unknown_serial": "No installation found with this serial number.",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "no_installations": "These credentials have access to no installation."
     },
     "abort": {
       "already_configured": "This installation is already set up.",
