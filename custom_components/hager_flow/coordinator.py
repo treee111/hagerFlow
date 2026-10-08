@@ -70,24 +70,41 @@ class HagerFlowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.utcnow()
         try:
             live = await self.api.async_get_live()
-
-            if (
-                self._energy_fetched_at is None
-                or now - self._energy_fetched_at >= ENERGY_UPDATE_INTERVAL
-            ):
-                self._energy = await self.api.async_get_energy()
-                self._energy_fetched_at = now
         except HagerFlowAuthError as err:
             # Triggers the reauth flow so the user can supply fresh credentials.
             raise ConfigEntryAuthFailed(str(err)) from err
         except HagerFlowError as err:
             raise UpdateFailed(str(err)) from err
 
+        await self._async_refresh_energy(now)
         await self._async_refresh_forecast(now)
 
         # The counters and the forecast are polled on slower cadences, so they
         # are carried over and are absent until their first poll lands.
         return {**live, **self._energy, **self._forecast}
+
+    async def _async_refresh_energy(self, now: datetime) -> None:
+        """Refresh the cumulative counters on their slower cadence.
+
+        Kept apart from the live values: the backend has been seen to answer
+        ``energy/total`` with 404 for days while ``energy/current`` works. A
+        broken counter endpoint must not take the live sensors down with it,
+        so the last counters are kept and retried on the next cycle.
+        """
+        if (
+            self._energy_fetched_at is not None
+            and now - self._energy_fetched_at < ENERGY_UPDATE_INTERVAL
+        ):
+            return
+        # Stamped before the request, so a failing endpoint is retried on the
+        # energy cadence rather than on every live poll.
+        self._energy_fetched_at = now
+        try:
+            self._energy = await self.api.async_get_energy()
+        except HagerFlowAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except HagerFlowError as err:
+            _LOGGER.warning("Could not refresh energy counters: %s", err)
 
     async def _async_refresh_forecast(self, now: datetime) -> None:
         """Refresh the production forecast, if the backend has one.
