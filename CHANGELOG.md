@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-A list of unreleased changes can be found [here](https://github.com/treee111/hagerFlow/compare/v1.0.0...HEAD).
+A list of unreleased changes can be found [here](https://github.com/treee111/hagerFlow/compare/v1.0.1...HEAD).
+
+<a name="1.0.1"></a>
+## [1.0.1] - 2026-10-08
+### Bug Fixes
+- Keep live values when the energy counters cannot be fetched ([#10](https://github.com/treee111/hagerFlow/issues/10)) [`4b71208`](https://github.com/treee111/hagerFlow/commit/4b71208517300e43e1a7ad3d9f452e541f28166a)
+
 
 <a name="1.0.0"></a>
 ## 1.0.0 - 2026-08-24
@@ -26,3 +32,4 @@ A list of unreleased changes can be found [here](https://github.com/treee111/hag
 - Add git-chglog configuration ([#9](https://github.com/treee111/hagerFlow/issues/9)) [`a3e7e08`](https://github.com/treee111/hagerFlow/commit/a3e7e08f31bdffaf2e9b6bd26c1cf30010a42ad3)
 
 
+[1.0.1]: https://github.com/treee111/hagerFlow/compare/v1.0.0...v1.0.1
